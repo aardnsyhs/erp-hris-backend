@@ -27,4 +27,32 @@ export class AuthRepository {
       },
     });
   }
+
+  async findRefreshTokensByUserId(userId: string): Promise<RefreshToken[]> {
+    return this.prisma.refreshToken.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async revokeRefreshToken(id: string): Promise<RefreshToken> {
+    return this.prisma.refreshToken.update({
+      where: { id },
+      data: {
+        revokedAt: new Date(),
+      },
+    });
+  }
+
+  async revokeAllRefreshTokensByUserId(userId: string): Promise<{ count: number }> {
+    return this.prisma.refreshToken.updateMany({
+      where: {
+        userId,
+        revokedAt: null,
+      },
+      data: {
+        revokedAt: new Date(),
+      },
+    });
+  }
 }

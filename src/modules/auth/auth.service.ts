@@ -1,6 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { RefreshToken } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import ms from 'ms';
 import type { StringValue } from 'ms';
@@ -85,13 +86,111 @@ export class AuthService {
     };
   }
 
-  async refreshTokens(userId: string, incomingRefreshToken: string): Promise<{ accessToken: string; newRefreshToken: string }> {
-    // TODO (Phase 3c): Implement single-use rotation and reuse detection
-    throw new Error('Not implemented');
+  async refreshTokens(
+    userId: string,
+    incomingRefreshToken: string,
+  ): Promise<{ accessToken: string; newRefreshToken: string }> {
+    if (!incomingRefreshToken) {
+      throw new UnauthorizedException('Refresh token tidak ditemukan');
+    }
+
+    // 1. Fetch user to ensure user exists and is active
+    const user = await this.authRepository.findById(userId);
+    if (!user || !user.isActive) {
+      await this.authRepository.revokeAllRefreshTokensByUserId(userId);
+      throw new UnauthorizedException('Pengguna tidak aktif atau tidak ditemukan');
+    }
+
+    // 2. Fetch all refresh tokens for this user
+    const userTokens = await this.authRepository.findRefreshTokensByUserId(userId);
+
+    // 3. Find matching token in DB using bcrypt.compare
+    let matchedToken: RefreshToken | null = null;
+    for (const tokenRecord of userTokens) {
+      const isMatch = await bcrypt.compare(incomingRefreshToken, tokenRecord.tokenHash);
+      if (isMatch) {
+        matchedToken = tokenRecord;
+        break;
+      }
+    }
+
+    // Scenario 4: Token not found in DB -> revoke all user sessions
+    if (!matchedToken) {
+      await this.authRepository.revokeAllRefreshTokensByUserId(userId);
+      throw new UnauthorizedException('Token tidak valid');
+    }
+
+    // Scenario 1: Reuse Attack Detected (token already revoked) -> revoke all user sessions
+    if (matchedToken.revokedAt !== null) {
+      await this.authRepository.revokeAllRefreshTokensByUserId(userId);
+      throw new UnauthorizedException(
+        'Sesi telah kedaluwarsa atau token telah digunakan ulang. Silakan login kembali.',
+      );
+    }
+
+    // Scenario 2: Normal Expiration (token expired) -> revoke only this token
+    const now = new Date();
+    if (matchedToken.expiresAt <= now) {
+      await this.authRepository.revokeRefreshToken(matchedToken.id);
+      throw new UnauthorizedException('Sesi telah berakhir, silakan login kembali');
+    }
+
+    // Scenario 3: Valid Active Token -> Rotate single-use token
+    // a. Revoke current old token
+    await this.authRepository.revokeRefreshToken(matchedToken.id);
+
+    // b. Generate new Access Token
+    const accessPayload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      employeeId: user.employeeId,
+    };
+    const accessToken = await this.jwtService.signAsync(accessPayload);
+
+    // c. Generate new Refresh Token
+    const refreshSecret = this.configService.getOrThrow<string>('JWT_REFRESH_SECRET');
+    const refreshExpiryStr = this.configService.get<StringValue>('JWT_REFRESH_EXPIRATION', '7d');
+
+    const refreshPayload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+    };
+    const newRefreshToken = await this.jwtService.signAsync(refreshPayload, {
+      secret: refreshSecret,
+      expiresIn: refreshExpiryStr,
+    });
+
+    // d. Hash new refresh token and save to DB
+    const saltRounds = 10;
+    const newRefreshTokenHash = await bcrypt.hash(newRefreshToken, saltRounds);
+    const expiryMs = ms(refreshExpiryStr);
+    const expiresAt = new Date(Date.now() + expiryMs);
+
+    await this.authRepository.createRefreshToken(user.id, newRefreshTokenHash, expiresAt);
+
+    return {
+      accessToken,
+      newRefreshToken,
+    };
   }
 
-  async logout(userId: string): Promise<void> {
-    // TODO (Phase 3c): Invalidate / revoke refresh token in database
+  async logout(userId: string, incomingRefreshToken?: string): Promise<void> {
+    if (incomingRefreshToken) {
+      const userTokens = await this.authRepository.findRefreshTokensByUserId(userId);
+      for (const tokenRecord of userTokens) {
+        if (tokenRecord.revokedAt === null) {
+          const isMatch = await bcrypt.compare(incomingRefreshToken, tokenRecord.tokenHash);
+          if (isMatch) {
+            await this.authRepository.revokeRefreshToken(tokenRecord.id);
+            return;
+          }
+        }
+      }
+    }
+
+    await this.authRepository.revokeAllRefreshTokensByUserId(userId);
   }
 
   async getMe(userId: string): Promise<any> {
