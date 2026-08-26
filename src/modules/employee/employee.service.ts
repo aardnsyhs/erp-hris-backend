@@ -71,7 +71,9 @@ export class EmployeeService {
       const ownProfile = await this.employeeRepository.findById(
         currentUser.employeeId,
       );
-      const data = ownProfile ? [ownProfile] : [];
+      const data = ownProfile
+        ? [this.mapEmployeeForUser(ownProfile, currentUser)]
+        : [];
       return {
         data,
         meta: {
@@ -127,8 +129,12 @@ export class EmployeeService {
 
     const totalPages = total === 0 ? 0 : Math.ceil(total / limit);
 
+    const mappedData = data.map((emp) =>
+      this.mapEmployeeForUser(emp, currentUser),
+    );
+
     return {
-      data,
+      data: mappedData,
       meta: {
         total,
         page,
@@ -174,8 +180,8 @@ export class EmployeeService {
       }
     }
 
-    // 3. Role: HR_ADMIN -> Akses penuh
-    return employee;
+    // 3. Role-based view mapping
+    return this.mapEmployeeForUser(employee, currentUser);
   }
 
   async update(id: string, updateEmployeeDto: UpdateEmployeeDto) {
@@ -238,5 +244,61 @@ export class EmployeeService {
     return {
       message: 'Karyawan berhasil dinonaktifkan',
     };
+  }
+
+  // --- Whitelist View Mappers ---
+
+  private mapToFullView(employee: any) {
+    return {
+      id: employee.id,
+      departmentId: employee.departmentId,
+      nip: employee.nip,
+      fullName: employee.fullName,
+      email: employee.email,
+      phone: employee.phone,
+      jobTitle: employee.jobTitle,
+      hireDate: employee.hireDate,
+      baseSalary: employee.baseSalary,
+      status: employee.status,
+      deletedAt: employee.deletedAt,
+      createdAt: employee.createdAt,
+      updatedAt: employee.updatedAt,
+      ...(employee.department && { department: employee.department }),
+      ...(employee.user && { user: employee.user }),
+    };
+  }
+
+  private mapToManagerView(employee: any) {
+    return {
+      id: employee.id,
+      departmentId: employee.departmentId,
+      nip: employee.nip,
+      fullName: employee.fullName,
+      email: employee.email,
+      phone: employee.phone,
+      jobTitle: employee.jobTitle,
+      hireDate: employee.hireDate,
+      status: employee.status,
+      deletedAt: employee.deletedAt,
+      createdAt: employee.createdAt,
+      updatedAt: employee.updatedAt,
+      ...(employee.department && { department: employee.department }),
+      ...(employee.user && { user: employee.user }),
+    };
+  }
+
+  private mapEmployeeForUser(employee: any, currentUser: AuthenticatedUser) {
+    // 1. HR_ADMIN gets full financial view
+    if (currentUser.role === UserRole.HR_ADMIN) {
+      return this.mapToFullView(employee);
+    }
+
+    // 2. Self-access precedence: Any employee viewing own profile gets full financial view
+    if (currentUser.employeeId && currentUser.employeeId === employee.id) {
+      return this.mapToFullView(employee);
+    }
+
+    // 3. Manager viewing team member gets stripped non-financial view
+    return this.mapToManagerView(employee);
   }
 }

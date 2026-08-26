@@ -8,18 +8,49 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
+const nonFinancialEmployeeSelect = {
+  select: {
+    id: true,
+    departmentId: true,
+    nip: true,
+    fullName: true,
+    email: true,
+    phone: true,
+    jobTitle: true,
+    hireDate: true,
+    status: true,
+    department: {
+      select: {
+        id: true,
+        code: true,
+        name: true,
+      },
+    },
+  },
+};
+
+const nonFinancialApproverSelect = {
+  select: {
+    id: true,
+    nip: true,
+    fullName: true,
+    email: true,
+    jobTitle: true,
+    departmentId: true,
+    department: {
+      select: {
+        id: true,
+        code: true,
+        name: true,
+      },
+    },
+  },
+};
+
 export type LeaveRequestWithDetails = Prisma.LeaveRequestGetPayload<{
   include: {
-    employee: {
-      include: {
-        department: true;
-      };
-    };
-    approver: {
-      include: {
-        department: true;
-      };
-    };
+    employee: typeof nonFinancialEmployeeSelect;
+    approver: typeof nonFinancialApproverSelect;
   };
 }>;
 
@@ -33,11 +64,7 @@ export class LeaveRequestRepository {
     return this.prisma.leaveRequest.create({
       data,
       include: {
-        employee: {
-          include: {
-            department: true,
-          },
-        },
+        employee: nonFinancialEmployeeSelect,
       },
     });
   }
@@ -46,16 +73,8 @@ export class LeaveRequestRepository {
     return this.prisma.leaveRequest.findUnique({
       where: { id },
       include: {
-        employee: {
-          include: {
-            department: true,
-          },
-        },
-        approver: {
-          include: {
-            department: true,
-          },
-        },
+        employee: nonFinancialEmployeeSelect,
+        approver: nonFinancialApproverSelect,
       },
     });
   }
@@ -88,12 +107,8 @@ export class LeaveRequestRepository {
         approvedAt,
       },
       include: {
-        employee: {
-          include: {
-            department: true,
-          },
-        },
-        approver: true,
+        employee: nonFinancialEmployeeSelect,
+        approver: nonFinancialApproverSelect,
       },
     });
   }
@@ -113,12 +128,8 @@ export class LeaveRequestRepository {
         rejectionReason,
       },
       include: {
-        employee: {
-          include: {
-            department: true,
-          },
-        },
-        approver: true,
+        employee: nonFinancialEmployeeSelect,
+        approver: nonFinancialApproverSelect,
       },
     });
   }
@@ -158,12 +169,8 @@ export class LeaveRequestRepository {
       take: options.take,
       orderBy: { createdAt: 'desc' },
       include: {
-        employee: {
-          include: {
-            department: true,
-          },
-        },
-        approver: true,
+        employee: nonFinancialEmployeeSelect,
+        approver: nonFinancialApproverSelect,
       },
     });
   }

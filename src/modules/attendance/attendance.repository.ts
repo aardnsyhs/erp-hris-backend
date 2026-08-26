@@ -2,6 +2,27 @@ import { Injectable } from '@nestjs/common';
 import { Attendance, AttendanceStatus, Employee, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
+const nonFinancialEmployeeSelect = {
+  select: {
+    id: true,
+    departmentId: true,
+    nip: true,
+    fullName: true,
+    email: true,
+    phone: true,
+    jobTitle: true,
+    hireDate: true,
+    status: true,
+    department: {
+      select: {
+        id: true,
+        code: true,
+        name: true,
+      },
+    },
+  },
+};
+
 @Injectable()
 export class AttendanceRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -12,11 +33,7 @@ export class AttendanceRepository {
     return this.prisma.attendance.create({
       data,
       include: {
-        employee: {
-          include: {
-            department: true,
-          },
-        },
+        employee: nonFinancialEmployeeSelect,
       },
     });
   }
@@ -33,11 +50,7 @@ export class AttendanceRepository {
         ...(notes && { notes }),
       },
       include: {
-        employee: {
-          include: {
-            department: true,
-          },
-        },
+        employee: nonFinancialEmployeeSelect,
       },
     });
   }
@@ -54,11 +67,7 @@ export class AttendanceRepository {
         },
       },
       include: {
-        employee: {
-          include: {
-            department: true,
-          },
-        },
+        employee: nonFinancialEmployeeSelect,
       },
     });
   }
@@ -94,11 +103,7 @@ export class AttendanceRepository {
       take: options.take,
       orderBy: { attendanceDate: 'desc' },
       include: {
-        employee: {
-          include: {
-            department: true,
-          },
-        },
+        employee: nonFinancialEmployeeSelect,
       },
     });
   }

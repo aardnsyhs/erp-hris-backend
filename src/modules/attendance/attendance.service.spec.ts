@@ -318,5 +318,37 @@ describe('AttendanceService', () => {
         }),
       );
     });
+
+    it('14. Keamanan Finansial: Relasi employee pada response absensi TIDAK memiliki baseSalary', async () => {
+      const attendanceWithNonFinancialEmployee = {
+        ...mockAttendance,
+        employee: {
+          id: 'emp-uuid-1',
+          nip: 'EMP001',
+          fullName: 'John Doe',
+          email: 'john@example.com',
+          jobTitle: 'Software Engineer',
+          departmentId: 'dept-eng-uuid',
+        },
+      };
+
+      attendanceRepository.findEmployeeById = jest
+        .fn()
+        .mockResolvedValue(managerEmployee);
+      attendanceRepository.findAll = jest
+        .fn()
+        .mockResolvedValue([attendanceWithNonFinancialEmployee]);
+      attendanceRepository.countAll = jest.fn().mockResolvedValue(1);
+
+      const result = await attendanceService.findAll(
+        { page: 1, limit: 10 },
+        managerUser,
+      );
+
+      expect(result.data).toHaveLength(1);
+      const returnedEmployee = (result.data[0] as any).employee;
+      expect(returnedEmployee).toBeDefined();
+      expect(returnedEmployee.baseSalary).toBeUndefined();
+    });
   });
 });

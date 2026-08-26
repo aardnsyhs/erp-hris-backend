@@ -59,8 +59,10 @@ describe('EmployeeService', () => {
     id: 'emp-manager-uuid',
     departmentId: 'dept-eng-uuid',
     nip: 'EMP002',
+    fullName: 'Manager Hendra',
     email: 'manager@example.com',
     jobTitle: 'Engineering Manager',
+    baseSalary: new Prisma.Decimal(20000000),
   };
 
   const employeeUser: AuthenticatedUser = {
@@ -99,14 +101,12 @@ describe('EmployeeService', () => {
       nip: 'EMP001',
       fullName: 'John Doe',
       email: 'john@example.com',
-      phone: '+628123456789',
       jobTitle: 'Software Engineer',
       hireDate: new Date('2024-01-01'),
       baseSalary: '12000000',
-      status: EmployeeStatus.ACTIVE,
     };
 
-    it('1. Sukses membuat karyawan baru dengan baseSalary bertipe Decimal', async () => {
+    it('1. Sukses membuat karyawan baru', async () => {
       employeeRepository.findDepartmentById = jest
         .fn()
         .mockResolvedValue(mockDepartment);
@@ -116,18 +116,16 @@ describe('EmployeeService', () => {
 
       const result = await employeeService.create(createDto);
 
-      expect(result).toBeDefined();
-      expect(result.nip).toBe('EMP001');
-      expect(employeeRepository.findDepartmentById).toHaveBeenCalledWith(
-        'dept-eng-uuid',
+      expect(result).toEqual(mockEmployee);
+      expect(employeeRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          nip: 'EMP001',
+          baseSalary: expect.any(Prisma.Decimal),
+        }),
       );
-      expect(employeeRepository.create).toHaveBeenCalledWith({
-        ...createDto,
-        baseSalary: expect.any(Prisma.Decimal),
-      });
     });
 
-    it('2. Gagal: departmentId tidak ditemukan melempar BadRequestException', async () => {
+    it('2. Gagal: Departemen tidak ditemukan melempar BadRequestException', async () => {
       employeeRepository.findDepartmentById = jest.fn().mockResolvedValue(null);
 
       await expect(employeeService.create(createDto)).rejects.toThrow(
@@ -145,6 +143,7 @@ describe('EmployeeService', () => {
       await expect(employeeService.create(createDto)).rejects.toThrow(
         ConflictException,
       );
+      expect(employeeRepository.create).not.toHaveBeenCalled();
     });
 
     it('4. Gagal: Email duplikat melempar ConflictException', async () => {
@@ -163,7 +162,7 @@ describe('EmployeeService', () => {
   });
 
   describe('findAll()', () => {
-    it('5. HR_ADMIN: dapat melihat seluruh karyawan dengan paginasi', async () => {
+    it('5. HR_ADMIN: dapat melihat seluruh karyawan dengan baseSalary lengkap', async () => {
       employeeRepository.findAll = jest.fn().mockResolvedValue([mockEmployee]);
       employeeRepository.countAll = jest.fn().mockResolvedValue(1);
 
@@ -173,6 +172,7 @@ describe('EmployeeService', () => {
       );
 
       expect(result.data).toHaveLength(1);
+      expect(result.data[0].baseSalary).toBeDefined();
       expect(result.meta).toEqual({
         total: 1,
         page: 1,
@@ -206,7 +206,7 @@ describe('EmployeeService', () => {
       });
     });
 
-    it('7. MANAGER: filter dibatasi hanya untuk departemen milik Manager', async () => {
+    it('7. MANAGER: filter dibatasi ke departemen sendiri & baseSalary anggota tim di-strip', async () => {
       employeeRepository.findById = jest
         .fn()
         .mockResolvedValue(managerEmployee);
@@ -221,6 +221,11 @@ describe('EmployeeService', () => {
       );
 
       expect(result.data).toHaveLength(2);
+      // Team member baseSalary is stripped
+      expect((result.data[0] as any).baseSalary).toBeUndefined();
+      // Manager's own baseSalary is retained
+      expect((result.data[1] as any).baseSalary).toBeDefined();
+
       expect(employeeRepository.findAll).toHaveBeenCalledWith(
         expect.objectContaining({
           departmentId: 'dept-eng-uuid',
@@ -245,7 +250,7 @@ describe('EmployeeService', () => {
       expect(employeeRepository.findAll).not.toHaveBeenCalled();
     });
 
-    it('9. EMPLOYEE: hanya mengembalikan data profil sendiri', async () => {
+    it('9. EMPLOYEE: hanya mengembalikan data profil sendiri dengan baseSalary utuh', async () => {
       employeeRepository.findById = jest.fn().mockResolvedValue(mockEmployee);
 
       const result = await employeeService.findAll(
@@ -255,21 +260,23 @@ describe('EmployeeService', () => {
 
       expect(result.data).toHaveLength(1);
       expect(result.data[0].id).toBe('emp-uuid-1');
+      expect(result.data[0].baseSalary).toBeDefined();
       expect(result.meta.total).toBe(1);
       expect(employeeRepository.findAll).not.toHaveBeenCalled();
     });
   });
 
   describe('findById()', () => {
-    it('10. HR_ADMIN: berhasil melihat karyawan manapun', async () => {
+    it('10. HR_ADMIN: berhasil melihat karyawan manapun dengan baseSalary lengkap', async () => {
       employeeRepository.findById = jest.fn().mockResolvedValue(mockEmployee);
 
       const result = await employeeService.findById('emp-uuid-1', hrAdminUser);
 
-      expect(result).toEqual(mockEmployee);
+      expect(result.id).toBe('emp-uuid-1');
+      expect((result as any).baseSalary).toBeDefined();
     });
 
-    it('11. MANAGER: berhasil melihat karyawan di departemen yang sama', async () => {
+    it('11. MANAGER: berhasil melihat anggota tim di departemen yang sama, TAPI baseSalary di-strip', async () => {
       employeeRepository.findById = jest
         .fn()
         .mockResolvedValueOnce(mockEmployee) // target employee
@@ -277,10 +284,23 @@ describe('EmployeeService', () => {
 
       const result = await employeeService.findById('emp-uuid-1', managerUser);
 
-      expect(result).toEqual(mockEmployee);
+      expect(result.id).toBe('emp-uuid-1');
+      expect((result as any).baseSalary).toBeUndefined();
     });
 
-    it('12. MANAGER: ditolak (ForbiddenException) saat mencoba melihat karyawan di departemen lain', async () => {
+    it('12. MANAGER: berhasil melihat profil miliknya sendiri dengan baseSalary utuh', async () => {
+      employeeRepository.findById = jest
+        .fn()
+        .mockResolvedValueOnce(managerEmployee) // target employee (self)
+        .mockResolvedValueOnce(managerEmployee); // manager employee
+
+      const result = await employeeService.findById('emp-manager-uuid', managerUser);
+
+      expect(result.id).toBe('emp-manager-uuid');
+      expect((result as any).baseSalary).toBeDefined();
+    });
+
+    it('13. MANAGER: ditolak (ForbiddenException) saat mencoba melihat karyawan di departemen lain', async () => {
       const otherDeptEmployee = {
         ...mockEmployee,
         id: 'emp-hr-uuid',
@@ -297,15 +317,16 @@ describe('EmployeeService', () => {
       ).rejects.toThrow(ForbiddenException);
     });
 
-    it('13. EMPLOYEE: berhasil melihat profil sendiri', async () => {
+    it('14. EMPLOYEE: berhasil melihat profil sendiri dengan baseSalary utuh', async () => {
       employeeRepository.findById = jest.fn().mockResolvedValue(mockEmployee);
 
       const result = await employeeService.findById('emp-uuid-1', employeeUser);
 
-      expect(result).toEqual(mockEmployee);
+      expect(result.id).toBe('emp-uuid-1');
+      expect((result as any).baseSalary).toBeDefined();
     });
 
-    it('14. EMPLOYEE: ditolak (ForbiddenException) saat mencoba melihat profil orang lain', async () => {
+    it('15. EMPLOYEE: ditolak (ForbiddenException) saat mencoba melihat profil orang lain', async () => {
       employeeRepository.findById = jest.fn().mockResolvedValue(mockEmployee);
 
       await expect(
@@ -313,7 +334,7 @@ describe('EmployeeService', () => {
       ).rejects.toThrow(ForbiddenException);
     });
 
-    it('15. Karyawan tidak ditemukan melempar NotFoundException', async () => {
+    it('16. Karyawan tidak ditemukan melempar NotFoundException', async () => {
       employeeRepository.findById = jest.fn().mockResolvedValue(null);
 
       await expect(
@@ -328,7 +349,7 @@ describe('EmployeeService', () => {
       baseSalary: '15000000',
     };
 
-    it('16. Sukses update karyawan', async () => {
+    it('17. Sukses update karyawan', async () => {
       employeeRepository.findById = jest.fn().mockResolvedValue(mockEmployee);
       employeeRepository.update = jest.fn().mockResolvedValue({
         ...mockEmployee,
@@ -348,7 +369,7 @@ describe('EmployeeService', () => {
       );
     });
 
-    it('17. Gagal: update departmentId ke departemen yang tidak ada melempar BadRequestException', async () => {
+    it('18. Gagal: update departmentId ke departemen yang tidak ada melempar BadRequestException', async () => {
       employeeRepository.findById = jest.fn().mockResolvedValue(mockEmployee);
       employeeRepository.findDepartmentById = jest.fn().mockResolvedValue(null);
 
@@ -361,7 +382,7 @@ describe('EmployeeService', () => {
   });
 
   describe('remove()', () => {
-    it('18. Sukses soft-delete karyawan', async () => {
+    it('19. Sukses soft-delete karyawan', async () => {
       employeeRepository.findById = jest.fn().mockResolvedValue(mockEmployee);
       employeeRepository.softDelete = jest.fn().mockResolvedValue({
         ...mockEmployee,
@@ -375,7 +396,7 @@ describe('EmployeeService', () => {
       expect(employeeRepository.softDelete).toHaveBeenCalledWith('emp-uuid-1');
     });
 
-    it('19. Gagal: menghapus karyawan yang tidak ditemukan melempar NotFoundException', async () => {
+    it('20. Gagal: menghapus karyawan yang tidak ditemukan melempar NotFoundException', async () => {
       employeeRepository.findById = jest.fn().mockResolvedValue(null);
 
       await expect(employeeService.remove('non-existent-id')).rejects.toThrow(

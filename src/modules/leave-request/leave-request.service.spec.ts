@@ -486,5 +486,47 @@ describe('LeaveRequestService', () => {
         leaveRequestService.findById('lr-uuid-1', managerOtherDeptUser),
       ).rejects.toThrow(ForbiddenException);
     });
+
+    it('21. Keamanan Finansial: Relasi employee dan approver pada response cuti TIDAK memiliki baseSalary', async () => {
+      const leaveRequestWithNonFinancialDetails = {
+        ...mockLeaveRequest,
+        employee: {
+          id: 'emp-uuid-1',
+          nip: 'EMP001',
+          fullName: 'John Doe',
+          email: 'john@example.com',
+          jobTitle: 'Software Engineer',
+          departmentId: 'dept-eng-uuid',
+        },
+        approver: {
+          id: 'emp-mgr-uuid',
+          nip: 'EMP002',
+          fullName: 'Manager Hendra',
+          email: 'manager@example.com',
+          jobTitle: 'Engineering Manager',
+          departmentId: 'dept-eng-uuid',
+        },
+      };
+
+      leaveRequestRepository.findById = jest
+        .fn()
+        .mockResolvedValue(leaveRequestWithNonFinancialDetails as any);
+      leaveRequestRepository.findEmployeeById = jest
+        .fn()
+        .mockResolvedValue(managerSameDept);
+
+      const result = await leaveRequestService.findById(
+        'lr-uuid-1',
+        managerSameDeptUser,
+      );
+
+      expect(result).toBeDefined();
+      const emp = (result as any).employee;
+      const appr = (result as any).approver;
+      expect(emp).toBeDefined();
+      expect(emp.baseSalary).toBeUndefined();
+      expect(appr).toBeDefined();
+      expect(appr.baseSalary).toBeUndefined();
+    });
   });
 });
