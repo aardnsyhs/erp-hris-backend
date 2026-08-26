@@ -11,12 +11,8 @@ import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { EmployeeQueryDto } from './dto/employee-query.dto';
 
-export interface AuthenticatedUser {
-  userId: string;
-  email: string;
-  role: UserRole;
-  employeeId?: string | null;
-}
+import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
+export type { AuthenticatedUser };
 
 @Injectable()
 export class EmployeeService {
