@@ -6,6 +6,12 @@ generator client {
   provider = "prisma-client-js"
 }
 
+enum UserRole {
+  HR_ADMIN
+  MANAGER
+  EMPLOYEE
+}
+
 enum EmployeeStatus {
   ACTIVE
   INACTIVE
@@ -37,6 +43,23 @@ enum PayrollStatus {
   PAID
 }
 
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         UserRole
+  isActive     Boolean  @default(true) @map("is_active")
+  employeeId   String?  @unique @map("employee_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  employee Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+
+  @@index([role])
+  @@index([isActive])
+  @@map("users")
+}
+
 model Department {
   id        String     @id @default(uuid())
   code      String     @unique
@@ -64,6 +87,7 @@ model Employee {
   updatedAt    DateTime       @updatedAt @map("updated_at")
 
   department     Department     @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  user           User?
   attendances    Attendance[]
   leaveRequests  LeaveRequest[] @relation("EmployeeLeaveRequests")
   approvedLeaves LeaveRequest[] @relation("ApprovedLeaveRequests")
