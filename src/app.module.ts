@@ -6,6 +6,7 @@ import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { DepartmentModule } from './modules/department/department.module';
+import { EmployeeModule } from './modules/employee/employee.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 
@@ -17,6 +18,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     PrismaModule,
     AuthModule,
     DepartmentModule,
+    EmployeeModule,
   ],
   controllers: [AppController],
   providers: [
