@@ -1,21 +1,30 @@
 import { Injectable } from '@nestjs/common';
-import { User } from '@prisma/client';
+import { User, RefreshToken } from '@prisma/client';
+import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
 export class AuthRepository {
-  // TODO: Inject PrismaService once database module is connected
+  constructor(private readonly prisma: PrismaService) {}
 
   async findByEmail(email: string): Promise<User | null> {
-    // TODO: Query User by email from Prisma
-    return null;
+    return this.prisma.user.findUnique({
+      where: { email },
+    });
   }
 
   async findById(id: string): Promise<User | null> {
-    // TODO: Query User by id from Prisma
-    return null;
+    return this.prisma.user.findUnique({
+      where: { id },
+    });
   }
 
-  async updateRefreshToken(userId: string, hashedRefreshToken: string | null): Promise<void> {
-    // TODO: Store / rotate / invalidate hashed refresh token for the user
+  async createRefreshToken(userId: string, tokenHash: string, expiresAt: Date): Promise<RefreshToken> {
+    return this.prisma.refreshToken.create({
+      data: {
+        userId,
+        tokenHash,
+        expiresAt,
+      },
+    });
   }
 }
