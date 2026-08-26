@@ -20,6 +20,8 @@ import { AuthResponseDto } from './dto/auth-response.dto';
 import { Public } from '../../common/decorators/public.decorator';
 import { JwtRefreshGuard } from '../../common/guards/jwt-refresh.guard';
 
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -111,9 +113,8 @@ export class AuthController {
     return { message: 'Logout berhasil' };
   }
 
-  // TODO: Protected getMe endpoint
   @Get('me')
-  async getMe(@Req() req: Request): Promise<any> {
-    throw new Error('Not implemented');
+  async getMe(@CurrentUser() currentUser: { userId: string }): Promise<any> {
+    return this.authService.getMe(currentUser.userId);
   }
 }

@@ -193,8 +193,20 @@ export class AuthService {
     await this.authRepository.revokeAllRefreshTokensByUserId(userId);
   }
 
-  async getMe(userId: string): Promise<any> {
-    // TODO: Fetch user profile with linked Employee data
-    throw new Error('Not implemented');
+  async getMe(userId: string) {
+    const user = await this.authRepository.findById(userId);
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException('Pengguna tidak ditemukan atau tidak aktif');
+    }
+
+    return {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      isActive: user.isActive,
+      employeeId: user.employeeId,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
   }
 }

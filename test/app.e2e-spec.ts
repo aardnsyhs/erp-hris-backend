@@ -16,11 +16,17 @@ describe('AppController (e2e)', () => {
     await app.init();
   });
 
-  it('/ (GET)', () => {
+  it('/ (GET) - Public route should return 200', () => {
     return request(app.getHttpServer())
       .get('/')
       .expect(200)
       .expect('Hello World!');
+  });
+
+  it('/auth/me (GET) - Protected route without token should return 401 Unauthorized', () => {
+    return request(app.getHttpServer())
+      .get('/auth/me')
+      .expect(401);
   });
 
   afterEach(async () => {

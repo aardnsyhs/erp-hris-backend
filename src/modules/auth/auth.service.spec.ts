@@ -303,4 +303,29 @@ describe('AuthService', () => {
       expect(authRepository.revokeAllRefreshTokensByUserId).toHaveBeenCalledWith(mockUser.id);
     });
   });
+
+  describe('GetMe Flow', () => {
+    it('1. Sukses getMe: mengembalikan profile user tanpa passwordHash', async () => {
+      authRepository.findById = jest.fn().mockResolvedValue(mockUser);
+
+      const result = await authService.getMe(mockUser.id);
+
+      expect(result).toEqual({
+        id: mockUser.id,
+        email: mockUser.email,
+        role: mockUser.role,
+        isActive: mockUser.isActive,
+        employeeId: mockUser.employeeId,
+        createdAt: mockUser.createdAt,
+        updatedAt: mockUser.updatedAt,
+      });
+      expect((result as any).passwordHash).toBeUndefined();
+    });
+
+    it('2. Gagal getMe: user tidak ditemukan atau tidak aktif melempar 401', async () => {
+      authRepository.findById = jest.fn().mockResolvedValue(null);
+
+      await expect(authService.getMe('non-existent-id')).rejects.toThrow(UnauthorizedException);
+    });
+  });
 });
