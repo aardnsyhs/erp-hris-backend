@@ -1,0 +1,140 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  INACTIVE
+  TERMINATED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  LATE
+  ABSENT
+}
+
+enum LeaveType {
+  ANNUAL
+  SICK
+  UNPAID
+  MATERNITY
+}
+
+enum LeaveRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum PayrollStatus {
+  DRAFT
+  PROCESSED
+  PAID
+}
+
+model Department {
+  id        String     @id @default(uuid())
+  code      String     @unique
+  name      String
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+  employees Employee[]
+
+  @@map("departments")
+}
+
+model Employee {
+  id           String         @id @default(uuid())
+  departmentId String         @map("department_id")
+  nip          String         @unique
+  fullName     String         @map("full_name")
+  email        String         @unique
+  phone        String?
+  jobTitle     String         @map("job_title")
+  hireDate     DateTime       @map("hire_date") @db.Date
+  baseSalary   Decimal        @map("base_salary") @db.Decimal(15, 2)
+  status       EmployeeStatus @default(ACTIVE)
+  deletedAt    DateTime?      @map("deleted_at")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  department     Department     @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  attendances    Attendance[]
+  leaveRequests  LeaveRequest[] @relation("EmployeeLeaveRequests")
+  approvedLeaves LeaveRequest[] @relation("ApprovedLeaveRequests")
+  payrolls       Payroll[]
+
+  @@index([departmentId])
+  @@index([status])
+  @@map("employees")
+}
+
+model Attendance {
+  id             String           @id @default(uuid())
+  employeeId     String           @map("employee_id")
+  attendanceDate DateTime         @map("attendance_date") @db.Date
+  checkIn        DateTime?        @map("check_in")
+  checkOut       DateTime?        @map("check_out")
+  status         AttendanceStatus
+  notes          String?
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@unique([employeeId, attendanceDate])
+  @@index([status])
+  @@index([employeeId])
+  @@index([attendanceDate])
+  @@map("attendances")
+}
+
+model LeaveRequest {
+  id              String             @id @default(uuid())
+  employeeId      String             @map("employee_id")
+  approvedBy      String?            @map("approved_by")
+  leaveType       LeaveType          @map("leave_type")
+  startDate       DateTime           @map("start_date") @db.Date
+  endDate         DateTime           @map("end_date") @db.Date
+  status          LeaveRequestStatus @default(PENDING)
+  reason          String
+  rejectionReason String?            @map("rejection_reason")
+  approvedAt      DateTime?          @map("approved_at")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  employee Employee  @relation("EmployeeLeaveRequests", fields: [employeeId], references: [id], onDelete: Restrict)
+  approver Employee? @relation("ApprovedLeaveRequests", fields: [approvedBy], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([employeeId])
+  @@index([startDate, endDate])
+  @@map("leave_requests")
+}
+
+model Payroll {
+  id          String        @id @default(uuid())
+  employeeId  String        @map("employee_id")
+  periodStart DateTime      @map("period_start") @db.Date
+  periodEnd   DateTime      @map("period_end") @db.Date
+  paymentDate DateTime?     @map("payment_date") @db.Date
+  basicSalary Decimal       @map("basic_salary") @db.Decimal(15, 2)
+  allowances  Decimal       @map("allowances") @db.Decimal(15, 2)
+  deductions  Decimal       @map("deductions") @db.Decimal(15, 2)
+  netSalary   Decimal       @map("net_salary") @db.Decimal(15, 2)
+  status      PayrollStatus @default(DRAFT)
+  deletedAt   DateTime?     @map("deleted_at")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@unique([employeeId, periodStart, periodEnd])
+  @@index([status])
+  @@index([employeeId])
+  @@index([periodStart, periodEnd])
+  @@map("payrolls")
+}
