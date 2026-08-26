@@ -8,6 +8,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { DepartmentModule } from './modules/department/department.module';
 import { EmployeeModule } from './modules/employee/employee.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
+import { LeaveRequestModule } from './modules/leave-request/leave-request.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 
@@ -21,6 +22,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     DepartmentModule,
     EmployeeModule,
     AttendanceModule,
+    LeaveRequestModule,
   ],
   controllers: [AppController],
   providers: [
