@@ -2,6 +2,16 @@ import { Injectable } from '@nestjs/common';
 import { Employee, Payroll, PayrollStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
+export type PayrollWithDetails = Prisma.PayrollGetPayload<{
+  include: {
+    employee: {
+      include: {
+        department: true;
+      };
+    };
+  };
+}>;
+
 @Injectable()
 export class PayrollRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -19,7 +29,7 @@ export class PayrollRepository {
     });
   }
 
-  async findById(id: string): Promise<Payroll | null> {
+  async findById(id: string): Promise<PayrollWithDetails | null> {
     return this.prisma.payroll.findUnique({
       where: { id },
       include: {
@@ -36,7 +46,7 @@ export class PayrollRepository {
     employeeId: string,
     periodStart: Date,
     periodEnd: Date,
-  ): Promise<Payroll | null> {
+  ): Promise<PayrollWithDetails | null> {
     return this.prisma.payroll.findUnique({
       where: {
         employeeId_periodStart_periodEnd: {
@@ -53,6 +63,76 @@ export class PayrollRepository {
         },
       },
     });
+  }
+
+  async findAll(options: {
+    skip: number;
+    take: number;
+    employeeId?: string;
+    departmentId?: string;
+    status?: PayrollStatus;
+    periodStart?: Date;
+    periodEnd?: Date;
+  }): Promise<PayrollWithDetails[]> {
+    const where: Prisma.PayrollWhereInput = {
+      ...(options.employeeId && { employeeId: options.employeeId }),
+      ...(options.status && { status: options.status }),
+      ...(options.departmentId && {
+        employee: {
+          departmentId: options.departmentId,
+        },
+      }),
+      ...((options.periodStart || options.periodEnd) && {
+        periodStart: {
+          ...(options.periodStart && { gte: options.periodStart }),
+        },
+        periodEnd: {
+          ...(options.periodEnd && { lte: options.periodEnd }),
+        },
+      }),
+    };
+
+    return this.prisma.payroll.findMany({
+      where,
+      skip: options.skip,
+      take: options.take,
+      orderBy: { periodStart: 'desc' },
+      include: {
+        employee: {
+          include: {
+            department: true,
+          },
+        },
+      },
+    });
+  }
+
+  async countAll(options: {
+    employeeId?: string;
+    departmentId?: string;
+    status?: PayrollStatus;
+    periodStart?: Date;
+    periodEnd?: Date;
+  }): Promise<number> {
+    const where: Prisma.PayrollWhereInput = {
+      ...(options.employeeId && { employeeId: options.employeeId }),
+      ...(options.status && { status: options.status }),
+      ...(options.departmentId && {
+        employee: {
+          departmentId: options.departmentId,
+        },
+      }),
+      ...((options.periodStart || options.periodEnd) && {
+        periodStart: {
+          ...(options.periodStart && { gte: options.periodStart }),
+        },
+        periodEnd: {
+          ...(options.periodEnd && { lte: options.periodEnd }),
+        },
+      }),
+    };
+
+    return this.prisma.payroll.count({ where });
   }
 
   async updateStatusIf(

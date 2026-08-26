@@ -1,14 +1,36 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
-import { PayrollStatus, Prisma } from '@prisma/client';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
+import { PayrollStatus, Prisma, UserRole } from '@prisma/client';
 import { PayrollService } from './payroll.service';
 import { PayrollRepository } from './payroll.repository';
 import { CreatePayrollDto } from './dto/create-payroll.dto';
 import { UpdatePayrollDto } from './dto/update-payroll.dto';
+import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
 
 describe('PayrollService', () => {
   let payrollService: PayrollService;
   let payrollRepository: jest.Mocked<Partial<PayrollRepository>>;
+
+  const mockDepartmentEng = {
+    id: 'dept-eng-uuid',
+    code: 'ENG',
+    name: 'Engineering',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  const mockDepartmentHr = {
+    id: 'dept-hr-uuid',
+    code: 'HR',
+    name: 'Human Resources',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
 
   const mockEmployee = {
     id: 'emp-uuid-1',
@@ -24,6 +46,48 @@ describe('PayrollService', () => {
     deletedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
+    department: mockDepartmentEng,
+  };
+
+  const managerEmployee = {
+    ...mockEmployee,
+    id: 'emp-manager-eng-uuid',
+    nip: 'MGR001',
+    fullName: 'Eng Manager',
+    email: 'manager.eng@example.com',
+    jobTitle: 'Engineering Manager',
+    department: mockDepartmentEng,
+  };
+
+  const otherDeptEmployee = {
+    ...mockEmployee,
+    id: 'emp-other-hr-uuid',
+    departmentId: 'dept-hr-uuid',
+    nip: 'HR001',
+    fullName: 'HR Officer',
+    email: 'hr@example.com',
+    department: mockDepartmentHr,
+  };
+
+  const hrAdminUser: AuthenticatedUser = {
+    userId: 'user-admin-uuid',
+    email: 'admin@example.com',
+    role: UserRole.HR_ADMIN,
+    employeeId: 'emp-admin-uuid',
+  };
+
+  const employeeUser: AuthenticatedUser = {
+    userId: 'user-emp-uuid',
+    email: 'john@example.com',
+    role: UserRole.EMPLOYEE,
+    employeeId: 'emp-uuid-1',
+  };
+
+  const managerUser: AuthenticatedUser = {
+    userId: 'user-manager-uuid',
+    email: 'manager.eng@example.com',
+    role: UserRole.MANAGER,
+    employeeId: 'emp-manager-eng-uuid',
   };
 
   const mockDraftPayroll = {
@@ -42,10 +106,28 @@ describe('PayrollService', () => {
     employee: mockEmployee,
   };
 
+  const mockManagerPayroll = {
+    id: 'payroll-manager-uuid',
+    employeeId: 'emp-manager-eng-uuid',
+    periodStart: new Date('2026-08-01'),
+    periodEnd: new Date('2026-08-31'),
+    basicSalary: new Prisma.Decimal(15000000),
+    allowances: new Prisma.Decimal(3000000),
+    deductions: new Prisma.Decimal(1000000),
+    netSalary: new Prisma.Decimal(17000000),
+    status: PayrollStatus.DRAFT,
+    paymentDate: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    employee: managerEmployee,
+  };
+
   beforeEach(async () => {
     payrollRepository = {
       create: jest.fn(),
       findById: jest.fn(),
+      findAll: jest.fn(),
+      countAll: jest.fn(),
       findByEmployeeAndPeriod: jest.fn(),
       findEmployeeById: jest.fn(),
       updateStatusIf: jest.fn(),
@@ -76,6 +158,7 @@ describe('PayrollService', () => {
       payrollRepository.findEmployeeById = jest.fn().mockResolvedValue(mockEmployee);
       payrollRepository.findByEmployeeAndPeriod = jest.fn().mockResolvedValue(null);
       payrollRepository.create = jest.fn().mockResolvedValue(mockDraftPayroll);
+      payrollRepository.findById = jest.fn().mockResolvedValue(mockDraftPayroll);
 
       const result = await payrollService.create(createDto);
 
@@ -96,6 +179,10 @@ describe('PayrollService', () => {
       payrollRepository.findEmployeeById = jest.fn().mockResolvedValue(mockEmployee);
       payrollRepository.findByEmployeeAndPeriod = jest.fn().mockResolvedValue(null);
       payrollRepository.create = jest.fn().mockImplementation((payload) => Promise.resolve(payload));
+      payrollRepository.findById = jest.fn().mockImplementation((id) => Promise.resolve({
+        ...mockDraftPayroll,
+        netSalary: new Prisma.Decimal(-4000000),
+      }));
 
       const highDeductionDto: CreatePayrollDto = {
         employeeId: 'emp-uuid-1',
@@ -107,7 +194,7 @@ describe('PayrollService', () => {
 
       const result = await payrollService.create(highDeductionDto);
 
-      expect(result.netSalary).toEqual(new Prisma.Decimal(-4000000));
+      expect((result as any).netSalary).toEqual(new Prisma.Decimal(-4000000));
     });
 
     it('3. Gagal: periodEnd lebih awal dari periodStart melempar BadRequestException', async () => {
@@ -199,7 +286,6 @@ describe('PayrollService', () => {
         expect.any(Date),
       );
 
-      // Verify paymentDate passed has 00:00:00.000 UTC
       const calledPaymentDate = (payrollRepository.updateStatusIf as jest.Mock).mock.calls[0][3] as Date;
       expect(calledPaymentDate.getUTCHours()).toBe(0);
       expect(calledPaymentDate.getUTCMinutes()).toBe(0);
@@ -251,7 +337,7 @@ describe('PayrollService', () => {
       expect(payrollRepository.updateDraftIf).toHaveBeenCalledWith('payroll-uuid-1', {
         allowances: new Prisma.Decimal(3000000),
         deductions: new Prisma.Decimal(1000000),
-        netSalary: new Prisma.Decimal(12000000), // 10,000,000 + 3,000,000 - 1,000,000
+        netSalary: new Prisma.Decimal(12000000),
       });
     });
 
@@ -305,6 +391,94 @@ describe('PayrollService', () => {
       await expect(payrollService.remove('non-existent-id')).rejects.toThrow(
         NotFoundException,
       );
+    });
+  });
+
+  describe('findAll() & findById() (Tahap 8c Visibility & Field-Stripping)', () => {
+    it('18. HR_ADMIN: melihat seluruh data payroll dengan nilai finansial lengkap', async () => {
+      payrollRepository.findAll = jest.fn().mockResolvedValue([mockDraftPayroll]);
+      payrollRepository.countAll = jest.fn().mockResolvedValue(1);
+
+      const result = await payrollService.findAll({ page: 1, limit: 10 }, hrAdminUser);
+
+      expect(result.data).toHaveLength(1);
+      const item = result.data[0] as any;
+      expect(item.basicSalary).toBeDefined();
+      expect(item.allowances).toBeDefined();
+      expect(item.deductions).toBeDefined();
+      expect(item.netSalary).toBeDefined();
+    });
+
+    it('19. EMPLOYEE: melihat data miliknya sendiri dengan nilai finansial lengkap', async () => {
+      payrollRepository.findAll = jest.fn().mockResolvedValue([mockDraftPayroll]);
+      payrollRepository.countAll = jest.fn().mockResolvedValue(1);
+
+      const result = await payrollService.findAll({ page: 1, limit: 10 }, employeeUser);
+
+      expect(result.data).toHaveLength(1);
+      const item = result.data[0] as any;
+      expect(item.basicSalary).toBeDefined();
+      expect(item.netSalary).toBeDefined();
+      expect(payrollRepository.findAll).toHaveBeenCalledWith(
+        expect.objectContaining({
+          employeeId: 'emp-uuid-1',
+        }),
+      );
+    });
+
+    it('20. EMPLOYEE: ditolak (ForbiddenException) saat mencoba melihat payroll karyawan lain', async () => {
+      payrollRepository.findById = jest.fn().mockResolvedValue({
+        ...mockDraftPayroll,
+        employeeId: 'emp-other-uuid',
+      });
+
+      await expect(
+        payrollService.findById('payroll-uuid-1', employeeUser),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('21. MANAGER: melihat payroll anggota tim di departemennya dengan field finansial di-strip', async () => {
+      payrollRepository.findEmployeeById = jest.fn().mockResolvedValue(managerEmployee);
+      payrollRepository.findById = jest.fn().mockResolvedValue(mockDraftPayroll); // employee is John Doe (different from manager)
+
+      const result = await payrollService.findById('payroll-uuid-1', managerUser);
+
+      expect(result).toBeDefined();
+      expect(result.id).toBe('payroll-uuid-1');
+      expect((result as any).basicSalary).toBeUndefined();
+      expect((result as any).allowances).toBeUndefined();
+      expect((result as any).deductions).toBeUndefined();
+      expect((result as any).netSalary).toBeUndefined();
+      expect(result.status).toBe(PayrollStatus.DRAFT);
+    });
+
+    it('22. MANAGER: ditolak (ForbiddenException) saat mencoba melihat payroll karyawan di departemen lain', async () => {
+      payrollRepository.findEmployeeById = jest.fn().mockResolvedValue(managerEmployee);
+      payrollRepository.findById = jest.fn().mockResolvedValue({
+        ...mockDraftPayroll,
+        employeeId: 'emp-other-hr-uuid',
+        employee: otherDeptEmployee,
+      });
+
+      await expect(
+        payrollService.findById('payroll-other-uuid', managerUser),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('23. MANAGER: melihat payroll miliknya sendiri -> menerima data finansial lengkap (self-access precedence)', async () => {
+      payrollRepository.findEmployeeById = jest.fn().mockResolvedValue(managerEmployee);
+      payrollRepository.findById = jest.fn().mockResolvedValue(mockManagerPayroll);
+
+      const result = await payrollService.findById('payroll-manager-uuid', managerUser);
+
+      expect(result).toBeDefined();
+      expect(result.id).toBe('payroll-manager-uuid');
+      // Financial fields MUST be present for manager's own payroll
+      expect((result as any).basicSalary).toBeDefined();
+      expect((result as any).allowances).toBeDefined();
+      expect((result as any).deductions).toBeDefined();
+      expect((result as any).netSalary).toBeDefined();
+      expect((result as any).netSalary).toEqual(new Prisma.Decimal(17000000));
     });
   });
 });

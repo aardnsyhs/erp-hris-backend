@@ -1,13 +1,20 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { PayrollStatus, Prisma } from '@prisma/client';
-import { PayrollRepository } from './payroll.repository';
+import { PayrollStatus, Prisma, UserRole } from '@prisma/client';
+import { PayrollRepository, PayrollWithDetails } from './payroll.repository';
 import { CreatePayrollDto } from './dto/create-payroll.dto';
 import { UpdatePayrollDto } from './dto/update-payroll.dto';
+import { PayrollQueryDto } from './dto/payroll-query.dto';
+import {
+  PayrollManagerViewDto,
+  PayrollResponseDto,
+} from './dto/payroll-response.dto';
+import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
 
 @Injectable()
 export class PayrollService {
@@ -16,6 +23,66 @@ export class PayrollService {
   private getTodayUtcDate(): Date {
     const now = new Date();
     return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  }
+
+  private mapToFullView(payroll: PayrollWithDetails): PayrollResponseDto {
+    return {
+      id: payroll.id,
+      employeeId: payroll.employeeId,
+      employee: payroll.employee
+        ? {
+            id: payroll.employee.id,
+            nip: payroll.employee.nip,
+            fullName: payroll.employee.fullName,
+            jobTitle: payroll.employee.jobTitle,
+            department: payroll.employee.department
+              ? {
+                  id: payroll.employee.department.id,
+                  code: payroll.employee.department.code,
+                  name: payroll.employee.department.name,
+                }
+              : null,
+          }
+        : null,
+      periodStart: payroll.periodStart,
+      periodEnd: payroll.periodEnd,
+      basicSalary: payroll.basicSalary,
+      allowances: payroll.allowances,
+      deductions: payroll.deductions,
+      netSalary: payroll.netSalary,
+      status: payroll.status,
+      paymentDate: payroll.paymentDate,
+      createdAt: payroll.createdAt,
+      updatedAt: payroll.updatedAt,
+    };
+  }
+
+  private mapToManagerView(payroll: PayrollWithDetails): PayrollManagerViewDto {
+    return {
+      id: payroll.id,
+      employeeId: payroll.employeeId,
+      employee: payroll.employee
+        ? {
+            id: payroll.employee.id,
+            nip: payroll.employee.nip,
+            fullName: payroll.employee.fullName,
+            jobTitle: payroll.employee.jobTitle,
+            department: payroll.employee.department
+              ? {
+                  id: payroll.employee.department.id,
+                  code: payroll.employee.department.code,
+                  name: payroll.employee.department.name,
+                }
+              : null,
+          }
+        : null,
+      periodStart: payroll.periodStart,
+      periodEnd: payroll.periodEnd,
+      status: payroll.status,
+      paymentDate: payroll.paymentDate,
+      createdAt: payroll.createdAt,
+      updatedAt: payroll.updatedAt,
+    };
   }
 
   async create(dto: CreatePayrollDto) {
@@ -54,7 +121,7 @@ export class PayrollService {
     const netSalary = basicSalary.plus(allowances).minus(deductions);
 
     // 5. Insert ke database dengan status DRAFT
-    return this.payrollRepository.create({
+    const created = await this.payrollRepository.create({
       employeeId: dto.employeeId,
       periodStart: dto.periodStart,
       periodEnd: dto.periodEnd,
@@ -64,6 +131,9 @@ export class PayrollService {
       netSalary,
       status: PayrollStatus.DRAFT,
     });
+
+    const fullPayroll = await this.payrollRepository.findById(created.id);
+    return fullPayroll ? this.mapToFullView(fullPayroll) : created;
   }
 
   async process(id: string) {
@@ -83,7 +153,8 @@ export class PayrollService {
       );
     }
 
-    return this.payrollRepository.findById(id);
+    const payroll = await this.payrollRepository.findById(id);
+    return payroll ? this.mapToFullView(payroll) : null;
   }
 
   async pay(id: string) {
@@ -105,7 +176,8 @@ export class PayrollService {
       );
     }
 
-    return this.payrollRepository.findById(id);
+    const payroll = await this.payrollRepository.findById(id);
+    return payroll ? this.mapToFullView(payroll) : null;
   }
 
   /**
@@ -153,7 +225,8 @@ export class PayrollService {
       );
     }
 
-    return this.payrollRepository.findById(id);
+    const updatedPayroll = await this.payrollRepository.findById(id);
+    return updatedPayroll ? this.mapToFullView(updatedPayroll) : null;
   }
 
   async remove(id: string) {
@@ -172,5 +245,137 @@ export class PayrollService {
     return {
       message: 'Payroll berhasil dihapus',
     };
+  }
+
+  async findAll(query: PayrollQueryDto, currentUser: AuthenticatedUser) {
+    const page = query.page && query.page > 0 ? query.page : 1;
+    const limit = query.limit && query.limit > 0 ? query.limit : 10;
+    const skip = (page - 1) * limit;
+
+    let targetEmployeeId = query.employeeId;
+    let targetDepartmentId = query.departmentId;
+
+    // 1. Role: EMPLOYEE -> Hanya melihat data payroll milik sendiri
+    if (currentUser.role === UserRole.EMPLOYEE) {
+      if (!currentUser.employeeId) {
+        return {
+          data: [],
+          meta: { total: 0, page, limit, totalPages: 0 },
+        };
+      }
+      targetEmployeeId = currentUser.employeeId;
+      targetDepartmentId = undefined;
+    }
+
+    // 2. Role: MANAGER -> Hanya melihat payroll karyawan di departemen yang sama
+    if (currentUser.role === UserRole.MANAGER) {
+      if (!currentUser.employeeId) {
+        return {
+          data: [],
+          meta: { total: 0, page, limit, totalPages: 0 },
+        };
+      }
+
+      const managerEmployee = await this.payrollRepository.findEmployeeById(
+        currentUser.employeeId,
+      );
+      if (!managerEmployee) {
+        return {
+          data: [],
+          meta: { total: 0, page, limit, totalPages: 0 },
+        };
+      }
+
+      targetDepartmentId = managerEmployee.departmentId;
+    }
+
+    // 3. Query database terpaginasi
+    const [rawPayrolls, total] = await Promise.all([
+      this.payrollRepository.findAll({
+        skip,
+        take: limit,
+        employeeId: targetEmployeeId,
+        departmentId: targetDepartmentId,
+        status: query.status,
+        periodStart: query.periodStart,
+        periodEnd: query.periodEnd,
+      }),
+      this.payrollRepository.countAll({
+        employeeId: targetEmployeeId,
+        departmentId: targetDepartmentId,
+        status: query.status,
+        periodStart: query.periodStart,
+        periodEnd: query.periodEnd,
+      }),
+    ]);
+
+    // 4. Role-based view mapping
+    const data = rawPayrolls.map((p) => {
+      if (
+        currentUser.role === UserRole.HR_ADMIN ||
+        p.employeeId === currentUser.employeeId
+      ) {
+        return this.mapToFullView(p);
+      }
+      return this.mapToManagerView(p);
+    });
+
+    const totalPages = total === 0 ? 0 : Math.ceil(total / limit);
+
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages,
+      },
+    };
+  }
+
+  async findById(id: string, currentUser: AuthenticatedUser) {
+    const payroll = await this.payrollRepository.findById(id);
+    if (!payroll) {
+      throw new NotFoundException(`Payroll dengan ID '${id}' tidak ditemukan`);
+    }
+
+    // 1. Role: EMPLOYEE -> Hanya boleh melihat data dirinya sendiri
+    if (currentUser.role === UserRole.EMPLOYEE) {
+      if (currentUser.employeeId !== payroll.employeeId) {
+        throw new ForbiddenException(
+          'Anda hanya dapat melihat data payroll Anda sendiri',
+        );
+      }
+      return this.mapToFullView(payroll);
+    }
+
+    // 2. Role: MANAGER -> Hanya boleh melihat payroll karyawan di departemen yang sama
+    if (currentUser.role === UserRole.MANAGER) {
+      if (!currentUser.employeeId) {
+        throw new ForbiddenException('Akun Manager tidak terhubung dengan data karyawan');
+      }
+
+      const managerEmployee = await this.payrollRepository.findEmployeeById(
+        currentUser.employeeId,
+      );
+      if (
+        !managerEmployee ||
+        managerEmployee.departmentId !== payroll.employee.departmentId
+      ) {
+        throw new ForbiddenException(
+          'Anda hanya dapat melihat data payroll karyawan di departemen Anda',
+        );
+      }
+
+      // Kepemilikan data pribadi didahulukan: jika milik Manager sendiri, kembalikan full view
+      if (payroll.employeeId === currentUser.employeeId) {
+        return this.mapToFullView(payroll);
+      }
+
+      return this.mapToManagerView(payroll);
+    }
+
+    // 3. Role: HR_ADMIN -> Akses penuh
+    return this.mapToFullView(payroll);
   }
 }
