@@ -6,7 +6,9 @@ import { PrismaService } from '../../prisma/prisma.service';
 export class AttendanceRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async checkIn(data: Prisma.AttendanceUncheckedCreateInput): Promise<Attendance> {
+  async checkIn(
+    data: Prisma.AttendanceUncheckedCreateInput,
+  ): Promise<Attendance> {
     return this.prisma.attendance.create({
       data,
       include: {
@@ -19,7 +21,11 @@ export class AttendanceRepository {
     });
   }
 
-  async checkOut(id: string, checkOutTime: Date, notes?: string): Promise<Attendance> {
+  async checkOut(
+    id: string,
+    checkOutTime: Date,
+    notes?: string,
+  ): Promise<Attendance> {
     return this.prisma.attendance.update({
       where: { id },
       data: {

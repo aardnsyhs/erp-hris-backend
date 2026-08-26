@@ -14,11 +14,15 @@ import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.in
 
 @Injectable()
 export class LeaveRequestService {
-  constructor(private readonly leaveRequestRepository: LeaveRequestRepository) {}
+  constructor(
+    private readonly leaveRequestRepository: LeaveRequestRepository,
+  ) {}
 
   async create(currentUser: AuthenticatedUser, dto: CreateLeaveRequestDto) {
     if (!currentUser.employeeId) {
-      throw new ForbiddenException('Akun Anda tidak terhubung dengan data karyawan');
+      throw new ForbiddenException(
+        'Akun Anda tidak terhubung dengan data karyawan',
+      );
     }
 
     if (dto.endDate < dto.startDate) {
@@ -27,11 +31,12 @@ export class LeaveRequestService {
       );
     }
 
-    const overlappingApproved = await this.leaveRequestRepository.findOverlappingApproved(
-      currentUser.employeeId,
-      dto.startDate,
-      dto.endDate,
-    );
+    const overlappingApproved =
+      await this.leaveRequestRepository.findOverlappingApproved(
+        currentUser.employeeId,
+        dto.startDate,
+        dto.endDate,
+      );
 
     if (overlappingApproved) {
       throw new ConflictException(
@@ -51,12 +56,16 @@ export class LeaveRequestService {
 
   async approve(id: string, currentUser: AuthenticatedUser) {
     if (!currentUser.employeeId) {
-      throw new ForbiddenException('Akun Anda tidak terhubung dengan data karyawan');
+      throw new ForbiddenException(
+        'Akun Anda tidak terhubung dengan data karyawan',
+      );
     }
 
     const leaveRequest = await this.leaveRequestRepository.findById(id);
     if (!leaveRequest) {
-      throw new NotFoundException(`Permohonan cuti dengan ID '${id}' tidak ditemukan`);
+      throw new NotFoundException(
+        `Permohonan cuti dengan ID '${id}' tidak ditemukan`,
+      );
     }
 
     if (leaveRequest.status !== LeaveRequestStatus.PENDING) {
@@ -78,9 +87,10 @@ export class LeaveRequestService {
     }
 
     if (currentUser.role === UserRole.MANAGER) {
-      const managerEmployee = await this.leaveRequestRepository.findEmployeeById(
-        currentUser.employeeId,
-      );
+      const managerEmployee =
+        await this.leaveRequestRepository.findEmployeeById(
+          currentUser.employeeId,
+        );
       if (
         !managerEmployee ||
         managerEmployee.departmentId !== leaveRequest.employee.departmentId
@@ -91,17 +101,29 @@ export class LeaveRequestService {
       }
     }
 
-    return this.leaveRequestRepository.approve(id, currentUser.employeeId, new Date());
+    return this.leaveRequestRepository.approve(
+      id,
+      currentUser.employeeId,
+      new Date(),
+    );
   }
 
-  async reject(id: string, currentUser: AuthenticatedUser, dto: RejectLeaveRequestDto) {
+  async reject(
+    id: string,
+    currentUser: AuthenticatedUser,
+    dto: RejectLeaveRequestDto,
+  ) {
     if (!currentUser.employeeId) {
-      throw new ForbiddenException('Akun Anda tidak terhubung dengan data karyawan');
+      throw new ForbiddenException(
+        'Akun Anda tidak terhubung dengan data karyawan',
+      );
     }
 
     const leaveRequest = await this.leaveRequestRepository.findById(id);
     if (!leaveRequest) {
-      throw new NotFoundException(`Permohonan cuti dengan ID '${id}' tidak ditemukan`);
+      throw new NotFoundException(
+        `Permohonan cuti dengan ID '${id}' tidak ditemukan`,
+      );
     }
 
     if (leaveRequest.status !== LeaveRequestStatus.PENDING) {
@@ -111,7 +133,9 @@ export class LeaveRequestService {
     }
 
     if (currentUser.employeeId === leaveRequest.employeeId) {
-      throw new ForbiddenException('Anda tidak dapat menolak permohonan cuti Anda sendiri');
+      throw new ForbiddenException(
+        'Anda tidak dapat menolak permohonan cuti Anda sendiri',
+      );
     }
 
     if (currentUser.role === UserRole.EMPLOYEE) {
@@ -121,9 +145,10 @@ export class LeaveRequestService {
     }
 
     if (currentUser.role === UserRole.MANAGER) {
-      const managerEmployee = await this.leaveRequestRepository.findEmployeeById(
-        currentUser.employeeId,
-      );
+      const managerEmployee =
+        await this.leaveRequestRepository.findEmployeeById(
+          currentUser.employeeId,
+        );
       if (
         !managerEmployee ||
         managerEmployee.departmentId !== leaveRequest.employee.departmentId
@@ -171,9 +196,10 @@ export class LeaveRequestService {
         };
       }
 
-      const managerEmployee = await this.leaveRequestRepository.findEmployeeById(
-        currentUser.employeeId,
-      );
+      const managerEmployee =
+        await this.leaveRequestRepository.findEmployeeById(
+          currentUser.employeeId,
+        );
       if (!managerEmployee) {
         return {
           data: [],
@@ -222,7 +248,9 @@ export class LeaveRequestService {
   async findById(id: string, currentUser: AuthenticatedUser) {
     const leaveRequest = await this.leaveRequestRepository.findById(id);
     if (!leaveRequest) {
-      throw new NotFoundException(`Permohonan cuti dengan ID '${id}' tidak ditemukan`);
+      throw new NotFoundException(
+        `Permohonan cuti dengan ID '${id}' tidak ditemukan`,
+      );
     }
 
     // 1. Role: EMPLOYEE -> Hanya boleh melihat cuti miliknya sendiri
@@ -237,12 +265,15 @@ export class LeaveRequestService {
     // 2. Role: MANAGER -> Hanya boleh melihat cuti departemennya sendiri
     if (currentUser.role === UserRole.MANAGER) {
       if (!currentUser.employeeId) {
-        throw new ForbiddenException('Akun Manager tidak terhubung dengan data karyawan');
+        throw new ForbiddenException(
+          'Akun Manager tidak terhubung dengan data karyawan',
+        );
       }
 
-      const managerEmployee = await this.leaveRequestRepository.findEmployeeById(
-        currentUser.employeeId,
-      );
+      const managerEmployee =
+        await this.leaveRequestRepository.findEmployeeById(
+          currentUser.employeeId,
+        );
       if (
         !managerEmployee ||
         managerEmployee.departmentId !== leaveRequest.employee.departmentId

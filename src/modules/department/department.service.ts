@@ -57,7 +57,9 @@ export class DepartmentService {
   async findById(id: string) {
     const department = await this.departmentRepository.findById(id);
     if (!department) {
-      throw new NotFoundException(`Departemen dengan ID '${id}' tidak ditemukan`);
+      throw new NotFoundException(
+        `Departemen dengan ID '${id}' tidak ditemukan`,
+      );
     }
 
     return department;
@@ -66,7 +68,10 @@ export class DepartmentService {
   async update(id: string, updateDepartmentDto: UpdateDepartmentDto) {
     const department = await this.findById(id);
 
-    if (updateDepartmentDto.code && updateDepartmentDto.code !== department.code) {
+    if (
+      updateDepartmentDto.code &&
+      updateDepartmentDto.code !== department.code
+    ) {
       const existingWithCode = await this.departmentRepository.findByCode(
         updateDepartmentDto.code,
       );
@@ -84,7 +89,8 @@ export class DepartmentService {
   async remove(id: string) {
     await this.findById(id);
 
-    const activeEmployeesCount = await this.departmentRepository.countActiveEmployees(id);
+    const activeEmployeesCount =
+      await this.departmentRepository.countActiveEmployees(id);
     if (activeEmployeesCount > 0) {
       throw new BadRequestException(
         `Tidak dapat menghapus departemen karena masih memiliki ${activeEmployeesCount} karyawan aktif`,

@@ -107,7 +107,9 @@ describe('EmployeeService', () => {
     };
 
     it('1. Sukses membuat karyawan baru dengan baseSalary bertipe Decimal', async () => {
-      employeeRepository.findDepartmentById = jest.fn().mockResolvedValue(mockDepartment);
+      employeeRepository.findDepartmentById = jest
+        .fn()
+        .mockResolvedValue(mockDepartment);
       employeeRepository.findByNip = jest.fn().mockResolvedValue(null);
       employeeRepository.findByEmail = jest.fn().mockResolvedValue(null);
       employeeRepository.create = jest.fn().mockResolvedValue(mockEmployee);
@@ -116,7 +118,9 @@ describe('EmployeeService', () => {
 
       expect(result).toBeDefined();
       expect(result.nip).toBe('EMP001');
-      expect(employeeRepository.findDepartmentById).toHaveBeenCalledWith('dept-eng-uuid');
+      expect(employeeRepository.findDepartmentById).toHaveBeenCalledWith(
+        'dept-eng-uuid',
+      );
       expect(employeeRepository.create).toHaveBeenCalledWith({
         ...createDto,
         baseSalary: expect.any(Prisma.Decimal),
@@ -126,23 +130,35 @@ describe('EmployeeService', () => {
     it('2. Gagal: departmentId tidak ditemukan melempar BadRequestException', async () => {
       employeeRepository.findDepartmentById = jest.fn().mockResolvedValue(null);
 
-      await expect(employeeService.create(createDto)).rejects.toThrow(BadRequestException);
+      await expect(employeeService.create(createDto)).rejects.toThrow(
+        BadRequestException,
+      );
       expect(employeeRepository.create).not.toHaveBeenCalled();
     });
 
     it('3. Gagal: NIP duplikat melempar ConflictException', async () => {
-      employeeRepository.findDepartmentById = jest.fn().mockResolvedValue(mockDepartment);
+      employeeRepository.findDepartmentById = jest
+        .fn()
+        .mockResolvedValue(mockDepartment);
       employeeRepository.findByNip = jest.fn().mockResolvedValue(mockEmployee);
 
-      await expect(employeeService.create(createDto)).rejects.toThrow(ConflictException);
+      await expect(employeeService.create(createDto)).rejects.toThrow(
+        ConflictException,
+      );
     });
 
     it('4. Gagal: Email duplikat melempar ConflictException', async () => {
-      employeeRepository.findDepartmentById = jest.fn().mockResolvedValue(mockDepartment);
+      employeeRepository.findDepartmentById = jest
+        .fn()
+        .mockResolvedValue(mockDepartment);
       employeeRepository.findByNip = jest.fn().mockResolvedValue(null);
-      employeeRepository.findByEmail = jest.fn().mockResolvedValue(mockEmployee);
+      employeeRepository.findByEmail = jest
+        .fn()
+        .mockResolvedValue(mockEmployee);
 
-      await expect(employeeService.create(createDto)).rejects.toThrow(ConflictException);
+      await expect(employeeService.create(createDto)).rejects.toThrow(
+        ConflictException,
+      );
     });
   });
 
@@ -151,7 +167,10 @@ describe('EmployeeService', () => {
       employeeRepository.findAll = jest.fn().mockResolvedValue([mockEmployee]);
       employeeRepository.countAll = jest.fn().mockResolvedValue(1);
 
-      const result = await employeeService.findAll({ page: 1, limit: 10 }, hrAdminUser);
+      const result = await employeeService.findAll(
+        { page: 1, limit: 10 },
+        hrAdminUser,
+      );
 
       expect(result.data).toHaveLength(1);
       expect(result.meta).toEqual({
@@ -173,7 +192,10 @@ describe('EmployeeService', () => {
       employeeRepository.findAll = jest.fn().mockResolvedValue([]);
       employeeRepository.countAll = jest.fn().mockResolvedValue(0);
 
-      const result = await employeeService.findAll({ page: 1, limit: 10 }, hrAdminUser);
+      const result = await employeeService.findAll(
+        { page: 1, limit: 10 },
+        hrAdminUser,
+      );
 
       expect(result.data).toHaveLength(0);
       expect(result.meta).toEqual({
@@ -185,11 +207,18 @@ describe('EmployeeService', () => {
     });
 
     it('7. MANAGER: filter dibatasi hanya untuk departemen milik Manager', async () => {
-      employeeRepository.findById = jest.fn().mockResolvedValue(managerEmployee);
-      employeeRepository.findAll = jest.fn().mockResolvedValue([mockEmployee, managerEmployee]);
+      employeeRepository.findById = jest
+        .fn()
+        .mockResolvedValue(managerEmployee);
+      employeeRepository.findAll = jest
+        .fn()
+        .mockResolvedValue([mockEmployee, managerEmployee]);
       employeeRepository.countAll = jest.fn().mockResolvedValue(2);
 
-      const result = await employeeService.findAll({ page: 1, limit: 10 }, managerUser);
+      const result = await employeeService.findAll(
+        { page: 1, limit: 10 },
+        managerUser,
+      );
 
       expect(result.data).toHaveLength(2);
       expect(employeeRepository.findAll).toHaveBeenCalledWith(
@@ -205,7 +234,10 @@ describe('EmployeeService', () => {
         employeeId: null,
       };
 
-      const result = await employeeService.findAll({ page: 1, limit: 10 }, managerWithoutEmp);
+      const result = await employeeService.findAll(
+        { page: 1, limit: 10 },
+        managerWithoutEmp,
+      );
 
       expect(result.data).toHaveLength(0);
       expect(result.meta.total).toBe(0);
@@ -216,7 +248,10 @@ describe('EmployeeService', () => {
     it('9. EMPLOYEE: hanya mengembalikan data profil sendiri', async () => {
       employeeRepository.findById = jest.fn().mockResolvedValue(mockEmployee);
 
-      const result = await employeeService.findAll({ page: 1, limit: 10 }, employeeUser);
+      const result = await employeeService.findAll(
+        { page: 1, limit: 10 },
+        employeeUser,
+      );
 
       expect(result.data).toHaveLength(1);
       expect(result.data[0].id).toBe('emp-uuid-1');
@@ -318,7 +353,9 @@ describe('EmployeeService', () => {
       employeeRepository.findDepartmentById = jest.fn().mockResolvedValue(null);
 
       await expect(
-        employeeService.update('emp-uuid-1', { departmentId: 'invalid-dept-uuid' }),
+        employeeService.update('emp-uuid-1', {
+          departmentId: 'invalid-dept-uuid',
+        }),
       ).rejects.toThrow(BadRequestException);
     });
   });

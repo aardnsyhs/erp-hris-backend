@@ -27,7 +27,9 @@ export type LeaveRequestWithDetails = Prisma.LeaveRequestGetPayload<{
 export class LeaveRequestRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(data: Prisma.LeaveRequestUncheckedCreateInput): Promise<LeaveRequest> {
+  async create(
+    data: Prisma.LeaveRequestUncheckedCreateInput,
+  ): Promise<LeaveRequest> {
     return this.prisma.leaveRequest.create({
       data,
       include: {

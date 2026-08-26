@@ -112,7 +112,9 @@ describe('AuthService', () => {
     it('2. Gagal: email tidak ditemukan melempar 401 Unauthorized', async () => {
       authRepository.findByEmail = jest.fn().mockResolvedValue(null);
 
-      await expect(authService.login(loginDto)).rejects.toThrow(UnauthorizedException);
+      await expect(authService.login(loginDto)).rejects.toThrow(
+        UnauthorizedException,
+      );
 
       try {
         await authService.login(loginDto);
@@ -131,7 +133,9 @@ describe('AuthService', () => {
         password: 'wrong_password',
       };
 
-      await expect(authService.login(wrongPasswordDto)).rejects.toThrow(UnauthorizedException);
+      await expect(authService.login(wrongPasswordDto)).rejects.toThrow(
+        UnauthorizedException,
+      );
 
       try {
         await authService.login(wrongPasswordDto);
@@ -146,7 +150,9 @@ describe('AuthService', () => {
       const inactiveUser = { ...mockUser, isActive: false };
       authRepository.findByEmail = jest.fn().mockResolvedValue(inactiveUser);
 
-      await expect(authService.login(loginDto)).rejects.toThrow(UnauthorizedException);
+      await expect(authService.login(loginDto)).rejects.toThrow(
+        UnauthorizedException,
+      );
 
       try {
         await authService.login(loginDto);
@@ -177,7 +183,9 @@ describe('AuthService', () => {
         createdAt: new Date(),
       };
 
-      authRepository.findRefreshTokensByUserId = jest.fn().mockResolvedValue([activeTokenRecord]);
+      authRepository.findRefreshTokensByUserId = jest
+        .fn()
+        .mockResolvedValue([activeTokenRecord]);
       authRepository.revokeRefreshToken = jest.fn().mockResolvedValue({
         ...activeTokenRecord,
         revokedAt: new Date(),
@@ -195,12 +203,17 @@ describe('AuthService', () => {
         createdAt: new Date(),
       });
 
-      const result = await authService.refreshTokens(mockUser.id, rawRefreshToken);
+      const result = await authService.refreshTokens(
+        mockUser.id,
+        rawRefreshToken,
+      );
 
       expect(result).toBeDefined();
       expect(result.accessToken).toBe('new_access_token');
       expect(result.newRefreshToken).toBe('new_refresh_token');
-      expect(authRepository.revokeRefreshToken).toHaveBeenCalledWith('token-active-uuid');
+      expect(authRepository.revokeRefreshToken).toHaveBeenCalledWith(
+        'token-active-uuid',
+      );
       expect(authRepository.createRefreshToken).toHaveBeenCalledTimes(1);
     });
 
@@ -216,14 +229,20 @@ describe('AuthService', () => {
         createdAt: new Date(),
       };
 
-      authRepository.findRefreshTokensByUserId = jest.fn().mockResolvedValue([alreadyRevokedToken]);
-      authRepository.revokeAllRefreshTokensByUserId = jest.fn().mockResolvedValue({ count: 3 });
+      authRepository.findRefreshTokensByUserId = jest
+        .fn()
+        .mockResolvedValue([alreadyRevokedToken]);
+      authRepository.revokeAllRefreshTokensByUserId = jest
+        .fn()
+        .mockResolvedValue({ count: 3 });
 
-      await expect(authService.refreshTokens(mockUser.id, rawRefreshToken)).rejects.toThrow(
-        UnauthorizedException,
-      );
+      await expect(
+        authService.refreshTokens(mockUser.id, rawRefreshToken),
+      ).rejects.toThrow(UnauthorizedException);
 
-      expect(authRepository.revokeAllRefreshTokensByUserId).toHaveBeenCalledWith(mockUser.id);
+      expect(
+        authRepository.revokeAllRefreshTokensByUserId,
+      ).toHaveBeenCalledWith(mockUser.id);
       expect(authRepository.revokeRefreshToken).not.toHaveBeenCalled();
     });
 
@@ -239,30 +258,42 @@ describe('AuthService', () => {
         createdAt: new Date(),
       };
 
-      authRepository.findRefreshTokensByUserId = jest.fn().mockResolvedValue([expiredToken]);
+      authRepository.findRefreshTokensByUserId = jest
+        .fn()
+        .mockResolvedValue([expiredToken]);
       authRepository.revokeRefreshToken = jest.fn().mockResolvedValue({
         ...expiredToken,
         revokedAt: new Date(),
       });
 
-      await expect(authService.refreshTokens(mockUser.id, rawRefreshToken)).rejects.toThrow(
-        UnauthorizedException,
-      );
+      await expect(
+        authService.refreshTokens(mockUser.id, rawRefreshToken),
+      ).rejects.toThrow(UnauthorizedException);
 
-      expect(authRepository.revokeRefreshToken).toHaveBeenCalledWith('token-expired-uuid');
-      expect(authRepository.revokeAllRefreshTokensByUserId).not.toHaveBeenCalled();
+      expect(authRepository.revokeRefreshToken).toHaveBeenCalledWith(
+        'token-expired-uuid',
+      );
+      expect(
+        authRepository.revokeAllRefreshTokensByUserId,
+      ).not.toHaveBeenCalled();
     });
 
     it('4. Gagal: Token tidak ditemukan di database -> revoke SEMUA sesi user dan lempar 401', async () => {
       authRepository.findById = jest.fn().mockResolvedValue(mockUser);
-      authRepository.findRefreshTokensByUserId = jest.fn().mockResolvedValue([]);
-      authRepository.revokeAllRefreshTokensByUserId = jest.fn().mockResolvedValue({ count: 0 });
+      authRepository.findRefreshTokensByUserId = jest
+        .fn()
+        .mockResolvedValue([]);
+      authRepository.revokeAllRefreshTokensByUserId = jest
+        .fn()
+        .mockResolvedValue({ count: 0 });
 
-      await expect(authService.refreshTokens(mockUser.id, 'unrecognized_token')).rejects.toThrow(
-        UnauthorizedException,
-      );
+      await expect(
+        authService.refreshTokens(mockUser.id, 'unrecognized_token'),
+      ).rejects.toThrow(UnauthorizedException);
 
-      expect(authRepository.revokeAllRefreshTokensByUserId).toHaveBeenCalledWith(mockUser.id);
+      expect(
+        authRepository.revokeAllRefreshTokensByUserId,
+      ).toHaveBeenCalledWith(mockUser.id);
     });
   });
 
@@ -284,7 +315,9 @@ describe('AuthService', () => {
         createdAt: new Date(),
       };
 
-      authRepository.findRefreshTokensByUserId = jest.fn().mockResolvedValue([activeToken]);
+      authRepository.findRefreshTokensByUserId = jest
+        .fn()
+        .mockResolvedValue([activeToken]);
       authRepository.revokeRefreshToken = jest.fn().mockResolvedValue({
         ...activeToken,
         revokedAt: new Date(),
@@ -292,15 +325,21 @@ describe('AuthService', () => {
 
       await authService.logout(mockUser.id, rawRefreshToken);
 
-      expect(authRepository.revokeRefreshToken).toHaveBeenCalledWith('token-to-logout-uuid');
+      expect(authRepository.revokeRefreshToken).toHaveBeenCalledWith(
+        'token-to-logout-uuid',
+      );
     });
 
     it('2. Sukses logout tanpa refresh token spesifik: me-revoke semua sesi user', async () => {
-      authRepository.revokeAllRefreshTokensByUserId = jest.fn().mockResolvedValue({ count: 2 });
+      authRepository.revokeAllRefreshTokensByUserId = jest
+        .fn()
+        .mockResolvedValue({ count: 2 });
 
       await authService.logout(mockUser.id);
 
-      expect(authRepository.revokeAllRefreshTokensByUserId).toHaveBeenCalledWith(mockUser.id);
+      expect(
+        authRepository.revokeAllRefreshTokensByUserId,
+      ).toHaveBeenCalledWith(mockUser.id);
     });
   });
 
@@ -325,7 +364,9 @@ describe('AuthService', () => {
     it('2. Gagal getMe: user tidak ditemukan atau tidak aktif melempar 401', async () => {
       authRepository.findById = jest.fn().mockResolvedValue(null);
 
-      await expect(authService.getMe('non-existent-id')).rejects.toThrow(UnauthorizedException);
+      await expect(authService.getMe('non-existent-id')).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
   });
 });

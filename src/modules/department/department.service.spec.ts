@@ -1,5 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { DepartmentService } from './department.service';
 import { DepartmentRepository } from './department.repository';
 import { CreateDepartmentDto } from './dto/create-department.dto';
@@ -63,18 +67,22 @@ describe('DepartmentService', () => {
     });
 
     it('2. Gagal: kode departemen sudah terdaftar melempar ConflictException', async () => {
-      departmentRepository.findByCode = jest.fn().mockResolvedValue(mockDepartment);
+      departmentRepository.findByCode = jest
+        .fn()
+        .mockResolvedValue(mockDepartment);
 
-      await expect(departmentService.create({ code: 'ENG', name: 'Engineering 2' })).rejects.toThrow(
-        ConflictException,
-      );
+      await expect(
+        departmentService.create({ code: 'ENG', name: 'Engineering 2' }),
+      ).rejects.toThrow(ConflictException);
       expect(departmentRepository.create).not.toHaveBeenCalled();
     });
   });
 
   describe('findAll()', () => {
     it('3. Mengembalikan list departemen beserta metadata pagination', async () => {
-      departmentRepository.findAll = jest.fn().mockResolvedValue([mockDepartment]);
+      departmentRepository.findAll = jest
+        .fn()
+        .mockResolvedValue([mockDepartment]);
       departmentRepository.countAll = jest.fn().mockResolvedValue(1);
 
       const result = await departmentService.findAll({ page: 1, limit: 10 });
@@ -97,7 +105,9 @@ describe('DepartmentService', () => {
 
   describe('findById()', () => {
     it('4. Sukses mengembalikan detail departemen berdasarkan ID', async () => {
-      departmentRepository.findById = jest.fn().mockResolvedValue(mockDepartment);
+      departmentRepository.findById = jest
+        .fn()
+        .mockResolvedValue(mockDepartment);
 
       const result = await departmentService.findById('dept-uuid-1');
 
@@ -108,7 +118,9 @@ describe('DepartmentService', () => {
     it('5. Gagal: ID departemen tidak ditemukan melempar NotFoundException', async () => {
       departmentRepository.findById = jest.fn().mockResolvedValue(null);
 
-      await expect(departmentService.findById('non-existent-id')).rejects.toThrow(NotFoundException);
+      await expect(
+        departmentService.findById('non-existent-id'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -118,7 +130,9 @@ describe('DepartmentService', () => {
     };
 
     it('6. Sukses mengupdate departemen', async () => {
-      departmentRepository.findById = jest.fn().mockResolvedValue(mockDepartment);
+      departmentRepository.findById = jest
+        .fn()
+        .mockResolvedValue(mockDepartment);
       departmentRepository.update = jest.fn().mockResolvedValue({
         ...mockDepartment,
         name: 'Software Engineering',
@@ -127,11 +141,16 @@ describe('DepartmentService', () => {
       const result = await departmentService.update('dept-uuid-1', updateDto);
 
       expect(result.name).toBe('Software Engineering');
-      expect(departmentRepository.update).toHaveBeenCalledWith('dept-uuid-1', updateDto);
+      expect(departmentRepository.update).toHaveBeenCalledWith(
+        'dept-uuid-1',
+        updateDto,
+      );
     });
 
     it('7. Gagal: update kode ke kode yang sudah dipakai departemen lain melempar ConflictException', async () => {
-      departmentRepository.findById = jest.fn().mockResolvedValue(mockDepartment);
+      departmentRepository.findById = jest
+        .fn()
+        .mockResolvedValue(mockDepartment);
       departmentRepository.findByCode = jest.fn().mockResolvedValue({
         id: 'other-dept-id',
         code: 'FIN',
@@ -148,8 +167,12 @@ describe('DepartmentService', () => {
 
   describe('remove()', () => {
     it('8. Sukses menghapus departemen jika tidak ada karyawan aktif (count = 0)', async () => {
-      departmentRepository.findById = jest.fn().mockResolvedValue(mockDepartment);
-      departmentRepository.countActiveEmployees = jest.fn().mockResolvedValue(0);
+      departmentRepository.findById = jest
+        .fn()
+        .mockResolvedValue(mockDepartment);
+      departmentRepository.countActiveEmployees = jest
+        .fn()
+        .mockResolvedValue(0);
       departmentRepository.delete = jest.fn().mockResolvedValue(mockDepartment);
 
       const result = await departmentService.remove('dept-uuid-1');
@@ -159,10 +182,16 @@ describe('DepartmentService', () => {
     });
 
     it('9. Gagal: menolak penghapusan jika masih ada karyawan aktif melempar BadRequestException', async () => {
-      departmentRepository.findById = jest.fn().mockResolvedValue(mockDepartment);
-      departmentRepository.countActiveEmployees = jest.fn().mockResolvedValue(5);
+      departmentRepository.findById = jest
+        .fn()
+        .mockResolvedValue(mockDepartment);
+      departmentRepository.countActiveEmployees = jest
+        .fn()
+        .mockResolvedValue(5);
 
-      await expect(departmentService.remove('dept-uuid-1')).rejects.toThrow(BadRequestException);
+      await expect(departmentService.remove('dept-uuid-1')).rejects.toThrow(
+        BadRequestException,
+      );
       expect(departmentRepository.delete).not.toHaveBeenCalled();
     });
   });

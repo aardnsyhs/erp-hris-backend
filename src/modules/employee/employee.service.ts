@@ -23,17 +23,23 @@ export class EmployeeService {
       createEmployeeDto.departmentId,
     );
     if (!department) {
-      throw new BadRequestException('Departemen tidak valid atau tidak ditemukan');
+      throw new BadRequestException(
+        'Departemen tidak valid atau tidak ditemukan',
+      );
     }
 
-    const existingNip = await this.employeeRepository.findByNip(createEmployeeDto.nip);
+    const existingNip = await this.employeeRepository.findByNip(
+      createEmployeeDto.nip,
+    );
     if (existingNip) {
       throw new ConflictException(
         `Karyawan dengan NIP '${createEmployeeDto.nip}' sudah terdaftar`,
       );
     }
 
-    const existingEmail = await this.employeeRepository.findByEmail(createEmployeeDto.email);
+    const existingEmail = await this.employeeRepository.findByEmail(
+      createEmployeeDto.email,
+    );
     if (existingEmail) {
       throw new ConflictException(
         `Karyawan dengan email '${createEmployeeDto.email}' sudah terdaftar`,
@@ -62,7 +68,9 @@ export class EmployeeService {
         };
       }
 
-      const ownProfile = await this.employeeRepository.findById(currentUser.employeeId);
+      const ownProfile = await this.employeeRepository.findById(
+        currentUser.employeeId,
+      );
       const data = ownProfile ? [ownProfile] : [];
       return {
         data,
@@ -87,7 +95,9 @@ export class EmployeeService {
         };
       }
 
-      const managerEmployee = await this.employeeRepository.findById(currentUser.employeeId);
+      const managerEmployee = await this.employeeRepository.findById(
+        currentUser.employeeId,
+      );
       if (!managerEmployee) {
         return {
           data: [],
@@ -137,18 +147,27 @@ export class EmployeeService {
     // 1. Role: EMPLOYEE -> Hanya dapat mengakses profil sendiri
     if (currentUser.role === UserRole.EMPLOYEE) {
       if (currentUser.employeeId !== id) {
-        throw new ForbiddenException('Anda hanya dapat mengakses profil Anda sendiri');
+        throw new ForbiddenException(
+          'Anda hanya dapat mengakses profil Anda sendiri',
+        );
       }
     }
 
     // 2. Role: MANAGER -> Hanya dapat mengakses karyawan di departemen yang sama
     if (currentUser.role === UserRole.MANAGER) {
       if (!currentUser.employeeId) {
-        throw new ForbiddenException('Akun Manager tidak terhubung dengan data karyawan');
+        throw new ForbiddenException(
+          'Akun Manager tidak terhubung dengan data karyawan',
+        );
       }
 
-      const managerEmployee = await this.employeeRepository.findById(currentUser.employeeId);
-      if (!managerEmployee || managerEmployee.departmentId !== employee.departmentId) {
+      const managerEmployee = await this.employeeRepository.findById(
+        currentUser.employeeId,
+      );
+      if (
+        !managerEmployee ||
+        managerEmployee.departmentId !== employee.departmentId
+      ) {
         throw new ForbiddenException(
           'Anda hanya dapat melihat profil karyawan di departemen Anda sendiri',
         );
@@ -170,12 +189,16 @@ export class EmployeeService {
         updateEmployeeDto.departmentId,
       );
       if (!department) {
-        throw new BadRequestException('Departemen tidak valid atau tidak ditemukan');
+        throw new BadRequestException(
+          'Departemen tidak valid atau tidak ditemukan',
+        );
       }
     }
 
     if (updateEmployeeDto.nip && updateEmployeeDto.nip !== employee.nip) {
-      const existingNip = await this.employeeRepository.findByNip(updateEmployeeDto.nip);
+      const existingNip = await this.employeeRepository.findByNip(
+        updateEmployeeDto.nip,
+      );
       if (existingNip && existingNip.id !== id) {
         throw new ConflictException(
           `Karyawan dengan NIP '${updateEmployeeDto.nip}' sudah terdaftar`,
@@ -184,7 +207,9 @@ export class EmployeeService {
     }
 
     if (updateEmployeeDto.email && updateEmployeeDto.email !== employee.email) {
-      const existingEmail = await this.employeeRepository.findByEmail(updateEmployeeDto.email);
+      const existingEmail = await this.employeeRepository.findByEmail(
+        updateEmployeeDto.email,
+      );
       if (existingEmail && existingEmail.id !== id) {
         throw new ConflictException(
           `Karyawan dengan email '${updateEmployeeDto.email}' sudah terdaftar`,

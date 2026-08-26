@@ -83,7 +83,10 @@ export class DepartmentRepository {
     });
   }
 
-  async update(id: string, data: Partial<{ code: string; name: string }>): Promise<Department> {
+  async update(
+    id: string,
+    data: Partial<{ code: string; name: string }>,
+  ): Promise<Department> {
     return this.prisma.department.update({
       where: { id },
       data,

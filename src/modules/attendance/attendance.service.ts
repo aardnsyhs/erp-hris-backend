@@ -17,21 +17,26 @@ export class AttendanceService {
 
   private getTodayUtcDate(): Date {
     const now = new Date();
-    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    return new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    );
   }
 
   async checkIn(currentUser: AuthenticatedUser, checkInDto: CheckInDto) {
     if (!currentUser.employeeId) {
-      throw new ForbiddenException('Akun Anda tidak terhubung dengan data karyawan');
+      throw new ForbiddenException(
+        'Akun Anda tidak terhubung dengan data karyawan',
+      );
     }
 
     const todayUtc = this.getTodayUtcDate();
 
     // 1. Validasi unique constraint (employeeId, attendanceDate)
-    const existingAttendance = await this.attendanceRepository.findByEmployeeAndDate(
-      currentUser.employeeId,
-      todayUtc,
-    );
+    const existingAttendance =
+      await this.attendanceRepository.findByEmployeeAndDate(
+        currentUser.employeeId,
+        todayUtc,
+      );
 
     if (existingAttendance) {
       throw new ConflictException('Anda sudah melakukan check-in hari ini');
@@ -53,7 +58,9 @@ export class AttendanceService {
 
   async checkOut(currentUser: AuthenticatedUser, checkOutDto: CheckOutDto) {
     if (!currentUser.employeeId) {
-      throw new ForbiddenException('Akun Anda tidak terhubung dengan data karyawan');
+      throw new ForbiddenException(
+        'Akun Anda tidak terhubung dengan data karyawan',
+      );
     }
 
     const todayUtc = this.getTodayUtcDate();
@@ -77,10 +84,16 @@ export class AttendanceService {
 
     // 3. Waktu check-out strictly earlier than check-in
     if (nowUtc < attendance.checkIn) {
-      throw new BadRequestException('Waktu check-out tidak boleh lebih awal dari waktu check-in');
+      throw new BadRequestException(
+        'Waktu check-out tidak boleh lebih awal dari waktu check-in',
+      );
     }
 
-    return this.attendanceRepository.checkOut(attendance.id, nowUtc, checkOutDto.notes);
+    return this.attendanceRepository.checkOut(
+      attendance.id,
+      nowUtc,
+      checkOutDto.notes,
+    );
   }
 
   async findAll(query: AttendanceQueryDto, currentUser: AuthenticatedUser) {

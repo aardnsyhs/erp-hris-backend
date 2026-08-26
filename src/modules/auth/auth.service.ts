@@ -35,7 +35,10 @@ export class AuthService {
       throw new UnauthorizedException(genericErrorMessage);
     }
 
-    const isPasswordValid = await bcrypt.compare(loginDto.password, user.passwordHash);
+    const isPasswordValid = await bcrypt.compare(
+      loginDto.password,
+      user.passwordHash,
+    );
     if (!isPasswordValid) {
       throw new UnauthorizedException(genericErrorMessage);
     }
@@ -51,8 +54,12 @@ export class AuthService {
     const accessToken = await this.jwtService.signAsync(accessPayload);
 
     // 2. Generate longer-lived Refresh Token (7d)
-    const refreshSecret = this.configService.getOrThrow<string>('JWT_REFRESH_SECRET');
-    const refreshExpiryStr = this.configService.get<StringValue>('JWT_REFRESH_EXPIRATION', '7d');
+    const refreshSecret =
+      this.configService.getOrThrow<string>('JWT_REFRESH_SECRET');
+    const refreshExpiryStr = this.configService.get<StringValue>(
+      'JWT_REFRESH_EXPIRATION',
+      '7d',
+    );
 
     const refreshPayload = {
       sub: user.id,
@@ -71,7 +78,11 @@ export class AuthService {
     const expiryMs = ms(refreshExpiryStr);
     const expiresAt = new Date(Date.now() + expiryMs);
 
-    await this.authRepository.createRefreshToken(user.id, refreshTokenHash, expiresAt);
+    await this.authRepository.createRefreshToken(
+      user.id,
+      refreshTokenHash,
+      expiresAt,
+    );
 
     return {
       accessToken,
@@ -98,16 +109,22 @@ export class AuthService {
     const user = await this.authRepository.findById(userId);
     if (!user || !user.isActive) {
       await this.authRepository.revokeAllRefreshTokensByUserId(userId);
-      throw new UnauthorizedException('Pengguna tidak aktif atau tidak ditemukan');
+      throw new UnauthorizedException(
+        'Pengguna tidak aktif atau tidak ditemukan',
+      );
     }
 
     // 2. Fetch all refresh tokens for this user
-    const userTokens = await this.authRepository.findRefreshTokensByUserId(userId);
+    const userTokens =
+      await this.authRepository.findRefreshTokensByUserId(userId);
 
     // 3. Find matching token in DB using bcrypt.compare
     let matchedToken: RefreshToken | null = null;
     for (const tokenRecord of userTokens) {
-      const isMatch = await bcrypt.compare(incomingRefreshToken, tokenRecord.tokenHash);
+      const isMatch = await bcrypt.compare(
+        incomingRefreshToken,
+        tokenRecord.tokenHash,
+      );
       if (isMatch) {
         matchedToken = tokenRecord;
         break;
@@ -132,7 +149,9 @@ export class AuthService {
     const now = new Date();
     if (matchedToken.expiresAt <= now) {
       await this.authRepository.revokeRefreshToken(matchedToken.id);
-      throw new UnauthorizedException('Sesi telah berakhir, silakan login kembali');
+      throw new UnauthorizedException(
+        'Sesi telah berakhir, silakan login kembali',
+      );
     }
 
     // Scenario 3: Valid Active Token -> Rotate single-use token
@@ -149,8 +168,12 @@ export class AuthService {
     const accessToken = await this.jwtService.signAsync(accessPayload);
 
     // c. Generate new Refresh Token
-    const refreshSecret = this.configService.getOrThrow<string>('JWT_REFRESH_SECRET');
-    const refreshExpiryStr = this.configService.get<StringValue>('JWT_REFRESH_EXPIRATION', '7d');
+    const refreshSecret =
+      this.configService.getOrThrow<string>('JWT_REFRESH_SECRET');
+    const refreshExpiryStr = this.configService.get<StringValue>(
+      'JWT_REFRESH_EXPIRATION',
+      '7d',
+    );
 
     const refreshPayload = {
       sub: user.id,
@@ -168,7 +191,11 @@ export class AuthService {
     const expiryMs = ms(refreshExpiryStr);
     const expiresAt = new Date(Date.now() + expiryMs);
 
-    await this.authRepository.createRefreshToken(user.id, newRefreshTokenHash, expiresAt);
+    await this.authRepository.createRefreshToken(
+      user.id,
+      newRefreshTokenHash,
+      expiresAt,
+    );
 
     return {
       accessToken,
@@ -178,10 +205,14 @@ export class AuthService {
 
   async logout(userId: string, incomingRefreshToken?: string): Promise<void> {
     if (incomingRefreshToken) {
-      const userTokens = await this.authRepository.findRefreshTokensByUserId(userId);
+      const userTokens =
+        await this.authRepository.findRefreshTokensByUserId(userId);
       for (const tokenRecord of userTokens) {
         if (tokenRecord.revokedAt === null) {
-          const isMatch = await bcrypt.compare(incomingRefreshToken, tokenRecord.tokenHash);
+          const isMatch = await bcrypt.compare(
+            incomingRefreshToken,
+            tokenRecord.tokenHash,
+          );
           if (isMatch) {
             await this.authRepository.revokeRefreshToken(tokenRecord.id);
             return;
@@ -196,7 +227,9 @@ export class AuthService {
   async getMe(userId: string) {
     const user = await this.authRepository.findById(userId);
     if (!user || !user.isActive) {
-      throw new UnauthorizedException('Pengguna tidak ditemukan atau tidak aktif');
+      throw new UnauthorizedException(
+        'Pengguna tidak ditemukan atau tidak aktif',
+      );
     }
 
     return {

@@ -99,7 +99,9 @@ describe('AttendanceService', () => {
     };
 
     it('1. Sukses check-in: status default PRESENT dan checkIn tersimpan', async () => {
-      attendanceRepository.findByEmployeeAndDate = jest.fn().mockResolvedValue(null);
+      attendanceRepository.findByEmployeeAndDate = jest
+        .fn()
+        .mockResolvedValue(null);
       attendanceRepository.checkIn = jest.fn().mockResolvedValue({
         ...mockAttendance,
         notes: 'Working from office',
@@ -125,18 +127,20 @@ describe('AttendanceService', () => {
         employeeId: null,
       };
 
-      await expect(attendanceService.checkIn(userWithoutEmp, checkInDto)).rejects.toThrow(
-        ForbiddenException,
-      );
+      await expect(
+        attendanceService.checkIn(userWithoutEmp, checkInDto),
+      ).rejects.toThrow(ForbiddenException);
       expect(attendanceRepository.checkIn).not.toHaveBeenCalled();
     });
 
     it('3. Gagal check-in: sudah pernah check-in hari ini melempar ConflictException', async () => {
-      attendanceRepository.findByEmployeeAndDate = jest.fn().mockResolvedValue(mockAttendance);
+      attendanceRepository.findByEmployeeAndDate = jest
+        .fn()
+        .mockResolvedValue(mockAttendance);
 
-      await expect(attendanceService.checkIn(employeeUser, checkInDto)).rejects.toThrow(
-        ConflictException,
-      );
+      await expect(
+        attendanceService.checkIn(employeeUser, checkInDto),
+      ).rejects.toThrow(ConflictException);
       expect(attendanceRepository.checkIn).not.toHaveBeenCalled();
     });
   });
@@ -147,14 +151,19 @@ describe('AttendanceService', () => {
     };
 
     it('4. Sukses check-out: memperbarui checkOut time', async () => {
-      attendanceRepository.findByEmployeeAndDate = jest.fn().mockResolvedValue(mockAttendance);
+      attendanceRepository.findByEmployeeAndDate = jest
+        .fn()
+        .mockResolvedValue(mockAttendance);
       attendanceRepository.checkOut = jest.fn().mockResolvedValue({
         ...mockAttendance,
         checkOut: new Date(),
         notes: 'Done for the day',
       });
 
-      const result = await attendanceService.checkOut(employeeUser, checkOutDto);
+      const result = await attendanceService.checkOut(
+        employeeUser,
+        checkOutDto,
+      );
 
       expect(result).toBeDefined();
       expect(attendanceRepository.checkOut).toHaveBeenCalledWith(
@@ -170,17 +179,19 @@ describe('AttendanceService', () => {
         employeeId: null,
       };
 
-      await expect(attendanceService.checkOut(userWithoutEmp, checkOutDto)).rejects.toThrow(
-        ForbiddenException,
-      );
+      await expect(
+        attendanceService.checkOut(userWithoutEmp, checkOutDto),
+      ).rejects.toThrow(ForbiddenException);
     });
 
     it('6. Gagal check-out: belum check-in hari ini melempar BadRequestException', async () => {
-      attendanceRepository.findByEmployeeAndDate = jest.fn().mockResolvedValue(null);
+      attendanceRepository.findByEmployeeAndDate = jest
+        .fn()
+        .mockResolvedValue(null);
 
-      await expect(attendanceService.checkOut(employeeUser, checkOutDto)).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        attendanceService.checkOut(employeeUser, checkOutDto),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('7. Gagal check-out: sudah check-out hari ini melempar ConflictException', async () => {
@@ -188,11 +199,13 @@ describe('AttendanceService', () => {
         ...mockAttendance,
         checkOut: new Date(),
       };
-      attendanceRepository.findByEmployeeAndDate = jest.fn().mockResolvedValue(alreadyCheckedOut);
+      attendanceRepository.findByEmployeeAndDate = jest
+        .fn()
+        .mockResolvedValue(alreadyCheckedOut);
 
-      await expect(attendanceService.checkOut(employeeUser, checkOutDto)).rejects.toThrow(
-        ConflictException,
-      );
+      await expect(
+        attendanceService.checkOut(employeeUser, checkOutDto),
+      ).rejects.toThrow(ConflictException);
     });
 
     it('8. Gagal check-out: checkOut lebih awal dari checkIn melempar BadRequestException', async () => {
@@ -200,20 +213,27 @@ describe('AttendanceService', () => {
         ...mockAttendance,
         checkIn: new Date(Date.now() + 3600000), // check-in is 1 hour in future
       };
-      attendanceRepository.findByEmployeeAndDate = jest.fn().mockResolvedValue(futureCheckIn);
+      attendanceRepository.findByEmployeeAndDate = jest
+        .fn()
+        .mockResolvedValue(futureCheckIn);
 
-      await expect(attendanceService.checkOut(employeeUser, checkOutDto)).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        attendanceService.checkOut(employeeUser, checkOutDto),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 
   describe('findAll()', () => {
     it('9. EMPLOYEE: dibatasi hanya melihat riwayat absensi miliknya sendiri', async () => {
-      attendanceRepository.findAll = jest.fn().mockResolvedValue([mockAttendance]);
+      attendanceRepository.findAll = jest
+        .fn()
+        .mockResolvedValue([mockAttendance]);
       attendanceRepository.countAll = jest.fn().mockResolvedValue(1);
 
-      const result = await attendanceService.findAll({ page: 1, limit: 10 }, employeeUser);
+      const result = await attendanceService.findAll(
+        { page: 1, limit: 10 },
+        employeeUser,
+      );
 
       expect(result.data).toHaveLength(1);
       expect(result.meta.total).toBe(1);
@@ -230,7 +250,10 @@ describe('AttendanceService', () => {
         employeeId: null,
       };
 
-      const result = await attendanceService.findAll({ page: 1, limit: 10 }, userWithoutEmp);
+      const result = await attendanceService.findAll(
+        { page: 1, limit: 10 },
+        userWithoutEmp,
+      );
 
       expect(result.data).toHaveLength(0);
       expect(result.meta.total).toBe(0);
@@ -238,11 +261,18 @@ describe('AttendanceService', () => {
     });
 
     it('11. MANAGER: dibatasi hanya melihat absensi karyawan di departemennya', async () => {
-      attendanceRepository.findEmployeeById = jest.fn().mockResolvedValue(managerEmployee);
-      attendanceRepository.findAll = jest.fn().mockResolvedValue([mockAttendance]);
+      attendanceRepository.findEmployeeById = jest
+        .fn()
+        .mockResolvedValue(managerEmployee);
+      attendanceRepository.findAll = jest
+        .fn()
+        .mockResolvedValue([mockAttendance]);
       attendanceRepository.countAll = jest.fn().mockResolvedValue(1);
 
-      const result = await attendanceService.findAll({ page: 1, limit: 10 }, managerUser);
+      const result = await attendanceService.findAll(
+        { page: 1, limit: 10 },
+        managerUser,
+      );
 
       expect(result.data).toHaveLength(1);
       expect(attendanceRepository.findAll).toHaveBeenCalledWith(
@@ -258,7 +288,10 @@ describe('AttendanceService', () => {
         employeeId: null,
       };
 
-      const result = await attendanceService.findAll({ page: 1, limit: 10 }, managerWithoutEmp);
+      const result = await attendanceService.findAll(
+        { page: 1, limit: 10 },
+        managerWithoutEmp,
+      );
 
       expect(result.data).toHaveLength(0);
       expect(result.meta.total).toBe(0);
@@ -266,7 +299,9 @@ describe('AttendanceService', () => {
     });
 
     it('13. HR_ADMIN: dapat melihat seluruh riwayat absensi terpaginasi', async () => {
-      attendanceRepository.findAll = jest.fn().mockResolvedValue([mockAttendance]);
+      attendanceRepository.findAll = jest
+        .fn()
+        .mockResolvedValue([mockAttendance]);
       attendanceRepository.countAll = jest.fn().mockResolvedValue(1);
 
       const result = await attendanceService.findAll(

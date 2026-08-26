@@ -18,18 +18,16 @@ import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy';
       useFactory: (configService: ConfigService) => ({
         secret: configService.getOrThrow<string>('JWT_ACCESS_SECRET'),
         signOptions: {
-          expiresIn: configService.get<StringValue>('JWT_ACCESS_EXPIRATION', '15m'),
+          expiresIn: configService.get<StringValue>(
+            'JWT_ACCESS_EXPIRATION',
+            '15m',
+          ),
         },
       }),
     }),
   ],
   controllers: [AuthController],
-  providers: [
-    AuthService,
-    AuthRepository,
-    JwtStrategy,
-    JwtRefreshStrategy,
-  ],
+  providers: [AuthService, AuthRepository, JwtStrategy, JwtRefreshStrategy],
   exports: [AuthService, JwtModule, PassportModule],
 })
 export class AuthModule {}

@@ -3,7 +3,6 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
-  NotFoundException,
 } from '@nestjs/common';
 import { LeaveRequestStatus, LeaveType, UserRole } from '@prisma/client';
 import { LeaveRequestService } from './leave-request.service';
@@ -146,14 +145,20 @@ describe('LeaveRequestService', () => {
     };
 
     it('1. Sukses membuat permohonan cuti baru dengan status PENDING', async () => {
-      leaveRequestRepository.findOverlappingApproved = jest.fn().mockResolvedValue(null);
-      leaveRequestRepository.create = jest.fn().mockResolvedValue(mockLeaveRequest);
+      leaveRequestRepository.findOverlappingApproved = jest
+        .fn()
+        .mockResolvedValue(null);
+      leaveRequestRepository.create = jest
+        .fn()
+        .mockResolvedValue(mockLeaveRequest);
 
       const result = await leaveRequestService.create(employeeUser, createDto);
 
       expect(result).toBeDefined();
       expect(result.status).toBe(LeaveRequestStatus.PENDING);
-      expect(leaveRequestRepository.findOverlappingApproved).toHaveBeenCalledWith(
+      expect(
+        leaveRequestRepository.findOverlappingApproved,
+      ).toHaveBeenCalledWith(
         'emp-requester-uuid',
         createDto.startDate,
         createDto.endDate,
@@ -174,9 +179,9 @@ describe('LeaveRequestService', () => {
         employeeId: null,
       };
 
-      await expect(leaveRequestService.create(userWithoutEmp, createDto)).rejects.toThrow(
-        ForbiddenException,
-      );
+      await expect(
+        leaveRequestService.create(userWithoutEmp, createDto),
+      ).rejects.toThrow(ForbiddenException);
       expect(leaveRequestRepository.create).not.toHaveBeenCalled();
     });
 
@@ -187,34 +192,43 @@ describe('LeaveRequestService', () => {
         endDate: new Date('2026-09-01'),
       };
 
-      await expect(leaveRequestService.create(employeeUser, invalidDateDto)).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        leaveRequestService.create(employeeUser, invalidDateDto),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('4. Gagal: terdapat overlapping approved leave melempar ConflictException', async () => {
-      leaveRequestRepository.findOverlappingApproved = jest.fn().mockResolvedValue({
-        ...mockLeaveRequest,
-        status: LeaveRequestStatus.APPROVED,
-      });
+      leaveRequestRepository.findOverlappingApproved = jest
+        .fn()
+        .mockResolvedValue({
+          ...mockLeaveRequest,
+          status: LeaveRequestStatus.APPROVED,
+        });
 
-      await expect(leaveRequestService.create(employeeUser, createDto)).rejects.toThrow(
-        ConflictException,
-      );
+      await expect(
+        leaveRequestService.create(employeeUser, createDto),
+      ).rejects.toThrow(ConflictException);
     });
   });
 
   describe('approve()', () => {
     it('5. Sukses approve oleh Manager di departemen yang sama', async () => {
-      leaveRequestRepository.findById = jest.fn().mockResolvedValue(mockLeaveRequest);
-      leaveRequestRepository.findEmployeeById = jest.fn().mockResolvedValue(managerSameDept);
+      leaveRequestRepository.findById = jest
+        .fn()
+        .mockResolvedValue(mockLeaveRequest);
+      leaveRequestRepository.findEmployeeById = jest
+        .fn()
+        .mockResolvedValue(managerSameDept);
       leaveRequestRepository.approve = jest.fn().mockResolvedValue({
         ...mockLeaveRequest,
         status: LeaveRequestStatus.APPROVED,
         approvedBy: managerSameDeptUser.employeeId,
       });
 
-      const result = await leaveRequestService.approve('lr-uuid-1', managerSameDeptUser);
+      const result = await leaveRequestService.approve(
+        'lr-uuid-1',
+        managerSameDeptUser,
+      );
 
       expect(result.status).toBe(LeaveRequestStatus.APPROVED);
       expect(leaveRequestRepository.approve).toHaveBeenCalledWith(
@@ -225,14 +239,19 @@ describe('LeaveRequestService', () => {
     });
 
     it('6. Sukses approve oleh HR_ADMIN', async () => {
-      leaveRequestRepository.findById = jest.fn().mockResolvedValue(mockLeaveRequest);
+      leaveRequestRepository.findById = jest
+        .fn()
+        .mockResolvedValue(mockLeaveRequest);
       leaveRequestRepository.approve = jest.fn().mockResolvedValue({
         ...mockLeaveRequest,
         status: LeaveRequestStatus.APPROVED,
         approvedBy: hrAdminUser.employeeId,
       });
 
-      const result = await leaveRequestService.approve('lr-uuid-1', hrAdminUser);
+      const result = await leaveRequestService.approve(
+        'lr-uuid-1',
+        hrAdminUser,
+      );
 
       expect(result.status).toBe(LeaveRequestStatus.APPROVED);
       expect(leaveRequestRepository.approve).toHaveBeenCalledWith(
@@ -254,16 +273,22 @@ describe('LeaveRequestService', () => {
     });
 
     it('8. Gagal approve: self-approval (pemohon menyetujui sendiri) melempar ForbiddenException', async () => {
-      leaveRequestRepository.findById = jest.fn().mockResolvedValue(mockLeaveRequest);
+      leaveRequestRepository.findById = jest
+        .fn()
+        .mockResolvedValue(mockLeaveRequest);
 
-      await expect(leaveRequestService.approve('lr-uuid-1', employeeUser)).rejects.toThrow(
-        ForbiddenException,
-      );
+      await expect(
+        leaveRequestService.approve('lr-uuid-1', employeeUser),
+      ).rejects.toThrow(ForbiddenException);
     });
 
     it('9. Gagal approve: Manager di departemen berbeda melempar ForbiddenException', async () => {
-      leaveRequestRepository.findById = jest.fn().mockResolvedValue(mockLeaveRequest);
-      leaveRequestRepository.findEmployeeById = jest.fn().mockResolvedValue(managerOtherDept);
+      leaveRequestRepository.findById = jest
+        .fn()
+        .mockResolvedValue(mockLeaveRequest);
+      leaveRequestRepository.findEmployeeById = jest
+        .fn()
+        .mockResolvedValue(managerOtherDept);
 
       await expect(
         leaveRequestService.approve('lr-uuid-1', managerOtherDeptUser),
@@ -277,8 +302,12 @@ describe('LeaveRequestService', () => {
     };
 
     it('10. Sukses reject dengan rejectionReason', async () => {
-      leaveRequestRepository.findById = jest.fn().mockResolvedValue(mockLeaveRequest);
-      leaveRequestRepository.findEmployeeById = jest.fn().mockResolvedValue(managerSameDept);
+      leaveRequestRepository.findById = jest
+        .fn()
+        .mockResolvedValue(mockLeaveRequest);
+      leaveRequestRepository.findEmployeeById = jest
+        .fn()
+        .mockResolvedValue(managerSameDept);
       leaveRequestRepository.reject = jest.fn().mockResolvedValue({
         ...mockLeaveRequest,
         status: LeaveRequestStatus.REJECTED,
@@ -286,7 +315,11 @@ describe('LeaveRequestService', () => {
         approvedBy: managerSameDeptUser.employeeId,
       });
 
-      const result = await leaveRequestService.reject('lr-uuid-1', managerSameDeptUser, rejectDto);
+      const result = await leaveRequestService.reject(
+        'lr-uuid-1',
+        managerSameDeptUser,
+        rejectDto,
+      );
 
       expect(result.status).toBe(LeaveRequestStatus.REJECTED);
       expect(leaveRequestRepository.reject).toHaveBeenCalledWith(
@@ -298,7 +331,9 @@ describe('LeaveRequestService', () => {
     });
 
     it('11. Gagal reject: self-rejection melempar ForbiddenException', async () => {
-      leaveRequestRepository.findById = jest.fn().mockResolvedValue(mockLeaveRequest);
+      leaveRequestRepository.findById = jest
+        .fn()
+        .mockResolvedValue(mockLeaveRequest);
 
       await expect(
         leaveRequestService.reject('lr-uuid-1', employeeUser, rejectDto),
@@ -317,21 +352,34 @@ describe('LeaveRequestService', () => {
     });
 
     it('13. Gagal reject: Manager di departemen berbeda melempar ForbiddenException', async () => {
-      leaveRequestRepository.findById = jest.fn().mockResolvedValue(mockLeaveRequest);
-      leaveRequestRepository.findEmployeeById = jest.fn().mockResolvedValue(managerOtherDept);
+      leaveRequestRepository.findById = jest
+        .fn()
+        .mockResolvedValue(mockLeaveRequest);
+      leaveRequestRepository.findEmployeeById = jest
+        .fn()
+        .mockResolvedValue(managerOtherDept);
 
       await expect(
-        leaveRequestService.reject('lr-uuid-1', managerOtherDeptUser, rejectDto),
+        leaveRequestService.reject(
+          'lr-uuid-1',
+          managerOtherDeptUser,
+          rejectDto,
+        ),
       ).rejects.toThrow(ForbiddenException);
     });
   });
 
   describe('findAll()', () => {
     it('14. EMPLOYEE: dibatasi hanya melihat permohonan miliknya sendiri', async () => {
-      leaveRequestRepository.findAll = jest.fn().mockResolvedValue([mockLeaveRequest]);
+      leaveRequestRepository.findAll = jest
+        .fn()
+        .mockResolvedValue([mockLeaveRequest]);
       leaveRequestRepository.countAll = jest.fn().mockResolvedValue(1);
 
-      const result = await leaveRequestService.findAll({ page: 1, limit: 10 }, employeeUser);
+      const result = await leaveRequestService.findAll(
+        { page: 1, limit: 10 },
+        employeeUser,
+      );
 
       expect(result.data).toHaveLength(1);
       expect(result.meta.total).toBe(1);
@@ -343,8 +391,12 @@ describe('LeaveRequestService', () => {
     });
 
     it('15. MANAGER: dibatasi hanya melihat permohonan karyawan di departemennya', async () => {
-      leaveRequestRepository.findEmployeeById = jest.fn().mockResolvedValue(managerSameDept);
-      leaveRequestRepository.findAll = jest.fn().mockResolvedValue([mockLeaveRequest]);
+      leaveRequestRepository.findEmployeeById = jest
+        .fn()
+        .mockResolvedValue(managerSameDept);
+      leaveRequestRepository.findAll = jest
+        .fn()
+        .mockResolvedValue([mockLeaveRequest]);
       leaveRequestRepository.countAll = jest.fn().mockResolvedValue(1);
 
       const result = await leaveRequestService.findAll(
@@ -361,7 +413,9 @@ describe('LeaveRequestService', () => {
     });
 
     it('16. HR_ADMIN: dapat melihat seluruh permohonan cuti terpaginasi', async () => {
-      leaveRequestRepository.findAll = jest.fn().mockResolvedValue([mockLeaveRequest]);
+      leaveRequestRepository.findAll = jest
+        .fn()
+        .mockResolvedValue([mockLeaveRequest]);
       leaveRequestRepository.countAll = jest.fn().mockResolvedValue(1);
 
       const result = await leaveRequestService.findAll(
@@ -381,9 +435,14 @@ describe('LeaveRequestService', () => {
 
   describe('findById()', () => {
     it('17. EMPLOYEE: sukses melihat detail cuti miliknya sendiri', async () => {
-      leaveRequestRepository.findById = jest.fn().mockResolvedValue(mockLeaveRequest);
+      leaveRequestRepository.findById = jest
+        .fn()
+        .mockResolvedValue(mockLeaveRequest);
 
-      const result = await leaveRequestService.findById('lr-uuid-1', employeeUser);
+      const result = await leaveRequestService.findById(
+        'lr-uuid-1',
+        employeeUser,
+      );
 
       expect(result).toEqual(mockLeaveRequest);
     });
@@ -400,17 +459,28 @@ describe('LeaveRequestService', () => {
     });
 
     it('19. MANAGER: sukses melihat cuti karyawan di departemen yang sama', async () => {
-      leaveRequestRepository.findById = jest.fn().mockResolvedValue(mockLeaveRequest);
-      leaveRequestRepository.findEmployeeById = jest.fn().mockResolvedValue(managerSameDept);
+      leaveRequestRepository.findById = jest
+        .fn()
+        .mockResolvedValue(mockLeaveRequest);
+      leaveRequestRepository.findEmployeeById = jest
+        .fn()
+        .mockResolvedValue(managerSameDept);
 
-      const result = await leaveRequestService.findById('lr-uuid-1', managerSameDeptUser);
+      const result = await leaveRequestService.findById(
+        'lr-uuid-1',
+        managerSameDeptUser,
+      );
 
       expect(result).toEqual(mockLeaveRequest);
     });
 
     it('20. MANAGER: ditolak (ForbiddenException) saat melihat cuti karyawan di departemen lain', async () => {
-      leaveRequestRepository.findById = jest.fn().mockResolvedValue(mockLeaveRequest);
-      leaveRequestRepository.findEmployeeById = jest.fn().mockResolvedValue(managerOtherDept);
+      leaveRequestRepository.findById = jest
+        .fn()
+        .mockResolvedValue(mockLeaveRequest);
+      leaveRequestRepository.findEmployeeById = jest
+        .fn()
+        .mockResolvedValue(managerOtherDept);
 
       await expect(
         leaveRequestService.findById('lr-uuid-1', managerOtherDeptUser),

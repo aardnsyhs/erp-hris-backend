@@ -18,7 +18,11 @@ export class AuthRepository {
     });
   }
 
-  async createRefreshToken(userId: string, tokenHash: string, expiresAt: Date): Promise<RefreshToken> {
+  async createRefreshToken(
+    userId: string,
+    tokenHash: string,
+    expiresAt: Date,
+  ): Promise<RefreshToken> {
     return this.prisma.refreshToken.create({
       data: {
         userId,
@@ -44,7 +48,9 @@ export class AuthRepository {
     });
   }
 
-  async revokeAllRefreshTokensByUserId(userId: string): Promise<{ count: number }> {
+  async revokeAllRefreshTokensByUserId(
+    userId: string,
+  ): Promise<{ count: number }> {
     return this.prisma.refreshToken.updateMany({
       where: {
         userId,

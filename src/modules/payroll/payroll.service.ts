@@ -22,7 +22,9 @@ export class PayrollService {
 
   private getTodayUtcDate(): Date {
     const now = new Date();
-    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    return new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    );
   }
 
   private mapToFullView(payroll: PayrollWithDetails): PayrollResponseDto {
@@ -94,7 +96,9 @@ export class PayrollService {
     }
 
     // 2. Validasi keberadaan employee (dan tidak soft-deleted)
-    const employee = await this.payrollRepository.findEmployeeById(dto.employeeId);
+    const employee = await this.payrollRepository.findEmployeeById(
+      dto.employeeId,
+    );
     if (!employee) {
       throw new BadRequestException(
         `Karyawan dengan ID '${dto.employeeId}' tidak valid atau tidak ditemukan`,
@@ -102,11 +106,12 @@ export class PayrollService {
     }
 
     // 3. Validasi duplikasi periode untuk karyawan yang sama
-    const existingPayroll = await this.payrollRepository.findByEmployeeAndPeriod(
-      dto.employeeId,
-      dto.periodStart,
-      dto.periodEnd,
-    );
+    const existingPayroll =
+      await this.payrollRepository.findByEmployeeAndPeriod(
+        dto.employeeId,
+        dto.periodStart,
+        dto.periodEnd,
+      );
 
     if (existingPayroll) {
       throw new ConflictException(
@@ -146,7 +151,9 @@ export class PayrollService {
     if (updatedCount === 0) {
       const payroll = await this.payrollRepository.findById(id);
       if (!payroll) {
-        throw new NotFoundException(`Payroll dengan ID '${id}' tidak ditemukan`);
+        throw new NotFoundException(
+          `Payroll dengan ID '${id}' tidak ditemukan`,
+        );
       }
       throw new ConflictException(
         `Hanya payroll dengan status DRAFT yang dapat diproses, status saat ini: ${payroll.status}`,
@@ -169,7 +176,9 @@ export class PayrollService {
     if (updatedCount === 0) {
       const payroll = await this.payrollRepository.findById(id);
       if (!payroll) {
-        throw new NotFoundException(`Payroll dengan ID '${id}' tidak ditemukan`);
+        throw new NotFoundException(
+          `Payroll dengan ID '${id}' tidak ditemukan`,
+        );
       }
       throw new ConflictException(
         `Hanya payroll dengan status PROCESSED yang dapat dibayarkan, status saat ini: ${payroll.status}`,
@@ -235,7 +244,9 @@ export class PayrollService {
     if (deletedCount === 0) {
       const payroll = await this.payrollRepository.findById(id);
       if (!payroll) {
-        throw new NotFoundException(`Payroll dengan ID '${id}' tidak ditemukan`);
+        throw new NotFoundException(
+          `Payroll dengan ID '${id}' tidak ditemukan`,
+        );
       }
       throw new ConflictException(
         `Hanya payroll dengan status DRAFT yang dapat dihapus, status saat ini: ${payroll.status}`,
@@ -352,7 +363,9 @@ export class PayrollService {
     // 2. Role: MANAGER -> Hanya boleh melihat payroll karyawan di departemen yang sama
     if (currentUser.role === UserRole.MANAGER) {
       if (!currentUser.employeeId) {
-        throw new ForbiddenException('Akun Manager tidak terhubung dengan data karyawan');
+        throw new ForbiddenException(
+          'Akun Manager tidak terhubung dengan data karyawan',
+        );
       }
 
       const managerEmployee = await this.payrollRepository.findEmployeeById(

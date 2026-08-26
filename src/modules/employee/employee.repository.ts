@@ -105,7 +105,10 @@ export class EmployeeRepository {
     });
   }
 
-  async update(id: string, data: Prisma.EmployeeUncheckedUpdateInput): Promise<Employee> {
+  async update(
+    id: string,
+    data: Prisma.EmployeeUncheckedUpdateInput,
+  ): Promise<Employee> {
     return this.prisma.employee.update({
       where: { id },
       data,

@@ -10,14 +10,24 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
-import { EmployeeService, type AuthenticatedUser } from './employee.service';
+import { EmployeeService } from './employee.service';
+import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { EmployeeQueryDto } from './dto/employee-query.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
+@ApiTags('Employees')
+@ApiBearerAuth('JWT-auth')
 @Controller('employees')
 export class EmployeeController {
   constructor(private readonly employeeService: EmployeeService) {}
@@ -25,11 +35,28 @@ export class EmployeeController {
   @Roles(UserRole.HR_ADMIN)
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Tambah karyawan baru (HR_ADMIN only)',
+    description:
+      'Membuat data karyawan baru. NIP dan email harus unik, departmentId harus valid.',
+  })
+  @ApiResponse({ status: 201, description: 'Karyawan berhasil dibuat' })
+  @ApiResponse({
+    status: 400,
+    description: 'Validasi gagal atau departemen tidak ditemukan',
+  })
+  @ApiResponse({ status: 409, description: 'NIP atau email sudah terdaftar' })
   async create(@Body() createEmployeeDto: CreateEmployeeDto) {
     return this.employeeService.create(createEmployeeDto);
   }
 
   @Get()
+  @ApiOperation({
+    summary: 'Daftar karyawan (Role-scoped)',
+    description:
+      'Mengambil daftar karyawan terpaginasi. HR_ADMIN melihat semua, MANAGER melihat departemennya, EMPLOYEE hanya melihat profilnya sendiri.',
+  })
+  @ApiResponse({ status: 200, description: 'Daftar karyawan berhasil diambil' })
   async findAll(
     @Query() query: EmployeeQueryDto,
     @CurrentUser() currentUser: AuthenticatedUser,
@@ -38,6 +65,18 @@ export class EmployeeController {
   }
 
   @Get(':id')
+  @ApiOperation({
+    summary: 'Detail karyawan (Role-scoped)',
+    description:
+      'Mengambil detail profil karyawan. HR_ADMIN melihat siapapun, MANAGER melihat timnya, EMPLOYEE hanya melihat profil sendiri.',
+  })
+  @ApiParam({ name: 'id', description: 'UUID karyawan' })
+  @ApiResponse({ status: 200, description: 'Data karyawan ditemukan' })
+  @ApiResponse({
+    status: 403,
+    description: 'Akses ditolak (di luar scope tim / profil sendiri)',
+  })
+  @ApiResponse({ status: 404, description: 'Karyawan tidak ditemukan' })
   async findOne(
     @Param('id') id: string,
     @CurrentUser() currentUser: AuthenticatedUser,
@@ -47,6 +86,19 @@ export class EmployeeController {
 
   @Roles(UserRole.HR_ADMIN)
   @Patch(':id')
+  @ApiOperation({
+    summary: 'Update data karyawan (HR_ADMIN only)',
+    description:
+      'Memperbarui data profil karyawan. NIP/email baru harus tetap unik jika diubah.',
+  })
+  @ApiParam({ name: 'id', description: 'UUID karyawan' })
+  @ApiResponse({ status: 200, description: 'Karyawan berhasil diperbarui' })
+  @ApiResponse({ status: 400, description: 'Departemen tidak valid' })
+  @ApiResponse({ status: 404, description: 'Karyawan tidak ditemukan' })
+  @ApiResponse({
+    status: 409,
+    description: 'NIP atau email baru sudah digunakan',
+  })
   async update(
     @Param('id') id: string,
     @Body() updateEmployeeDto: UpdateEmployeeDto,
@@ -56,6 +108,14 @@ export class EmployeeController {
 
   @Roles(UserRole.HR_ADMIN)
   @Delete(':id')
+  @ApiOperation({
+    summary: 'Nonaktifkan / Soft Delete karyawan (HR_ADMIN only)',
+    description:
+      'Menyetel deletedAt ke waktu sekarang dan status menjadi INACTIVE.',
+  })
+  @ApiParam({ name: 'id', description: 'UUID karyawan' })
+  @ApiResponse({ status: 200, description: 'Karyawan berhasil dinonaktifkan' })
+  @ApiResponse({ status: 404, description: 'Karyawan tidak ditemukan' })
   async remove(@Param('id') id: string) {
     return this.employeeService.remove(id);
   }
