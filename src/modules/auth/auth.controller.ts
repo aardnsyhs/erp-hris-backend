@@ -30,6 +30,16 @@ import { Public } from '../../common/decorators/public.decorator';
 import { JwtRefreshGuard } from '../../common/guards/jwt-refresh.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
+const getRefreshCookieOptions = () => {
+  const isProduction = process.env.NODE_ENV === 'production';
+  return {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: 'lax' as const,
+    path: '/',
+  };
+};
+
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
@@ -76,10 +86,7 @@ export class AuthController {
     const maxAge = ms(refreshExpiryStr);
 
     res.cookie('refresh_token', refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/',
+      ...getRefreshCookieOptions(),
       maxAge,
     });
 
@@ -136,10 +143,7 @@ export class AuthController {
     const maxAge = ms(refreshExpiryStr);
 
     res.cookie('refresh_token', newRefreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/',
+      ...getRefreshCookieOptions(),
       maxAge,
     });
 
@@ -181,10 +185,9 @@ export class AuthController {
     }
 
     res.clearCookie('refresh_token', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/',
+      ...getRefreshCookieOptions(),
+      maxAge: 0,
+      expires: new Date(0),
     });
 
     return { message: 'Logout berhasil' };
