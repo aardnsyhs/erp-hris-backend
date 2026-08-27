@@ -400,4 +400,55 @@ describe('AttendanceService', () => {
       expect(returnedEmployee.baseSalary).toBeUndefined();
     });
   });
+
+  describe('getTodayAttendance()', () => {
+    it('16. Sukses: mengembalikan data absensi hari ini milik user login spesifik', async () => {
+      attendanceRepository.findByEmployeeAndDate = jest
+        .fn()
+        .mockResolvedValue(mockAttendance);
+
+      const result = await attendanceService.getTodayAttendance(employeeUser);
+
+      expect(result).toEqual(mockAttendance);
+      expect(attendanceRepository.findByEmployeeAndDate).toHaveBeenCalledWith(
+        'emp-uuid-1',
+        expect.any(Date),
+      );
+    });
+
+    it('17. Sukses: mengembalikan null jika user login belum absen hari ini (tidak mengambil record karyawan lain)', async () => {
+      attendanceRepository.findByEmployeeAndDate = jest
+        .fn()
+        .mockResolvedValue(null);
+
+      const hrAdminUser = {
+        userId: 'hr-user-uuid',
+        email: 'admin.hr@example.com',
+        role: UserRole.HR_ADMIN,
+        employeeId: 'hr-emp-uuid',
+      };
+
+      const result = await attendanceService.getTodayAttendance(hrAdminUser);
+
+      expect(result).toBeNull();
+      expect(attendanceRepository.findByEmployeeAndDate).toHaveBeenCalledWith(
+        'hr-emp-uuid',
+        expect.any(Date),
+      );
+    });
+
+    it('18. Sukses: mengembalikan null jika user tidak terhubung dengan employeeId', async () => {
+      const userWithoutEmp = {
+        userId: 'no-emp-user',
+        email: 'orphan@example.com',
+        role: UserRole.EMPLOYEE,
+        employeeId: null,
+      };
+
+      const result = await attendanceService.getTodayAttendance(userWithoutEmp);
+
+      expect(result).toBeNull();
+      expect(attendanceRepository.findByEmployeeAndDate).not.toHaveBeenCalled();
+    });
+  });
 });

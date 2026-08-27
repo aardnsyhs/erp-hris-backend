@@ -77,6 +77,20 @@ export class AttendanceController {
     return this.attendanceService.checkOut(currentUser, checkOutDto);
   }
 
+  @Get('me/today')
+  @ApiOperation({
+    summary: 'Status absensi hari ini milik pengguna yang sedang login',
+    description:
+      'Mengembalikan data absensi hari ini milik user login, atau null jika belum absen.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Status absensi hari ini berhasil diambil',
+  })
+  async getTodayAttendance(@CurrentUser() currentUser: AuthenticatedUser) {
+    return this.attendanceService.getTodayAttendance(currentUser);
+  }
+
   @Get()
   @ApiOperation({
     summary: 'Daftar riwayat absensi (Role-scoped)',

@@ -18,6 +18,26 @@ export class AuthRepository {
     });
   }
 
+  async findByIdWithEmployee(id: string) {
+    return this.prisma.user.findUnique({
+      where: { id },
+      include: {
+        employee: {
+          include: {
+            department: true,
+          },
+        },
+      },
+    });
+  }
+
+  async updatePassword(id: string, passwordHash: string): Promise<User> {
+    return this.prisma.user.update({
+      where: { id },
+      data: { passwordHash },
+    });
+  }
+
   async createRefreshToken(
     userId: string,
     tokenHash: string,

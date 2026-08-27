@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Patch,
   Post,
   Req,
   Res,
@@ -23,6 +24,7 @@ import ms from 'ms';
 import type { StringValue } from 'ms';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { Public } from '../../common/decorators/public.decorator';
 import { JwtRefreshGuard } from '../../common/guards/jwt-refresh.guard';
@@ -193,7 +195,7 @@ export class AuthController {
   @ApiOperation({
     summary: 'Profil pengguna yang sedang login',
     description:
-      'Mengembalikan data pengguna terotentikasi berdasarkan JWT Access Token.',
+      'Mengembalikan data pengguna terotentikasi beserta data employee profil terkait.',
   })
   @ApiResponse({
     status: 200,
@@ -205,5 +207,41 @@ export class AuthController {
   })
   async getMe(@CurrentUser() currentUser: { userId: string }): Promise<any> {
     return this.authService.getMe(currentUser.userId);
+  }
+
+  @Patch('change-password')
+  @ApiBearerAuth('JWT-auth')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Ganti password akun pengguna yang sedang login',
+    description:
+      'Memvalidasi password saat ini dan mengubahnya menjadi password baru (minimal 8 karakter).',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Password berhasil diubah',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Password berhasil diubah' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Password saat ini tidak sesuai / validasi gagal',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Pengguna tidak terautentikasi',
+  })
+  async changePassword(
+    @CurrentUser() currentUser: { userId: string },
+    @Body() changePasswordDto: ChangePasswordDto,
+  ): Promise<{ message: string }> {
+    return this.authService.changePassword(
+      currentUser.userId,
+      changePasswordDto,
+    );
   }
 }

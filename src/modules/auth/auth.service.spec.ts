@@ -1,5 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { UnauthorizedException, HttpStatus } from '@nestjs/common';
+import {
+  BadRequestException,
+  UnauthorizedException,
+  HttpStatus,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { UserRole } from '@prisma/client';
@@ -346,8 +350,28 @@ describe('AuthService', () => {
   });
 
   describe('GetMe Flow', () => {
-    it('1. Sukses getMe: mengembalikan profile user tanpa passwordHash', async () => {
-      authRepository.findById = jest.fn().mockResolvedValue(mockUser);
+    it('1. Sukses getMe: mengembalikan profile user beserta detail employee tanpa passwordHash', async () => {
+      const userWithEmployee = {
+        ...mockUser,
+        employee: {
+          id: 'emp-uuid-1',
+          nip: 'EMP001',
+          fullName: 'John Doe',
+          email: 'admin@example.com',
+          phone: '081234567890',
+          jobTitle: 'HR Director',
+          hireDate: new Date('2024-01-01'),
+          status: 'ACTIVE',
+          department: {
+            id: 'dept-1',
+            code: 'HR',
+            name: 'Human Resources',
+          },
+        },
+      };
+      authRepository.findByIdWithEmployee = jest
+        .fn()
+        .mockResolvedValue(userWithEmployee);
 
       const result = await authService.getMe(mockUser.id);
 
@@ -359,16 +383,74 @@ describe('AuthService', () => {
         employeeId: mockUser.employeeId,
         createdAt: mockUser.createdAt,
         updatedAt: mockUser.updatedAt,
+        employee: {
+          id: 'emp-uuid-1',
+          nip: 'EMP001',
+          fullName: 'John Doe',
+          email: 'admin@example.com',
+          phone: '081234567890',
+          jobTitle: 'HR Director',
+          hireDate: new Date('2024-01-01'),
+          status: 'ACTIVE',
+          department: {
+            id: 'dept-1',
+            code: 'HR',
+            name: 'Human Resources',
+          },
+        },
       });
       expect((result as any).passwordHash).toBeUndefined();
     });
 
     it('2. Gagal getMe: user tidak ditemukan atau tidak aktif melempar 401', async () => {
-      authRepository.findById = jest.fn().mockResolvedValue(null);
+      authRepository.findByIdWithEmployee = jest.fn().mockResolvedValue(null);
 
       await expect(authService.getMe('non-existent-id')).rejects.toThrow(
         UnauthorizedException,
       );
+    });
+  });
+
+  describe('ChangePassword Flow', () => {
+    const changePasswordDto = {
+      currentPassword: rawPassword,
+      newPassword: 'newSecretPassword123',
+    };
+
+    it('1. Sukses ganti password saat currentPassword cocok: password baru di-hash dan disimpan', async () => {
+      mockUser.passwordHash = hashedPassword;
+      authRepository.findById = jest.fn().mockResolvedValue(mockUser);
+      authRepository.updatePassword = jest.fn().mockResolvedValue(mockUser);
+
+      const result = await authService.changePassword(
+        mockUser.id,
+        changePasswordDto,
+      );
+
+      expect(result).toEqual({ message: 'Password berhasil diubah' });
+      expect(authRepository.updatePassword).toHaveBeenCalledTimes(1);
+    });
+
+    it('2. Gagal ganti password saat currentPassword salah melempar BadRequestException', async () => {
+      mockUser.passwordHash = hashedPassword;
+      authRepository.findById = jest.fn().mockResolvedValue(mockUser);
+      authRepository.updatePassword = jest.fn();
+
+      await expect(
+        authService.changePassword(mockUser.id, {
+          currentPassword: 'wrongCurrentPassword',
+          newPassword: 'newSecretPassword123',
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(authRepository.updatePassword).not.toHaveBeenCalled();
+    });
+
+    it('3. Gagal ganti password saat user tidak ditemukan / tidak aktif melempar UnauthorizedException', async () => {
+      authRepository.findById = jest.fn().mockResolvedValue(null);
+
+      await expect(
+        authService.changePassword('non-existent-id', changePasswordDto),
+      ).rejects.toThrow(UnauthorizedException);
     });
   });
 });

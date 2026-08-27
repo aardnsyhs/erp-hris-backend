@@ -190,4 +190,16 @@ export class AttendanceService {
       },
     };
   }
+
+  async getTodayAttendance(currentUser: AuthenticatedUser) {
+    if (!currentUser.employeeId) {
+      return null;
+    }
+
+    const todayUtc = this.getTodayUtcDate();
+    return this.attendanceRepository.findByEmployeeAndDate(
+      currentUser.employeeId,
+      todayUtc,
+    );
+  }
 }

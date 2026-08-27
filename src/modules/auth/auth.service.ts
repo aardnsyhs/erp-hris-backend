@@ -1,4 +1,8 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { RefreshToken } from '@prisma/client';
@@ -7,6 +11,7 @@ import ms from 'ms';
 import type { StringValue } from 'ms';
 import { AuthRepository } from './auth.repository';
 import { LoginDto } from './dto/login.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { AuthUserDto } from './dto/auth-response.dto';
 
 export interface LoginResult {
@@ -227,7 +232,7 @@ export class AuthService {
   }
 
   async getMe(userId: string) {
-    const user = await this.authRepository.findById(userId);
+    const user = await this.authRepository.findByIdWithEmployee(userId);
     if (!user || !user.isActive) {
       throw new UnauthorizedException(
         'Pengguna tidak ditemukan atau tidak aktif',
@@ -242,6 +247,52 @@ export class AuthService {
       employeeId: user.employeeId,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
+      employee: (user as any).employee
+        ? {
+            id: (user as any).employee.id,
+            nip: (user as any).employee.nip,
+            fullName: (user as any).employee.fullName,
+            email: (user as any).employee.email,
+            phone: (user as any).employee.phone,
+            jobTitle: (user as any).employee.jobTitle,
+            hireDate: (user as any).employee.hireDate,
+            status: (user as any).employee.status,
+            department: (user as any).employee.department
+              ? {
+                  id: (user as any).employee.department.id,
+                  code: (user as any).employee.department.code,
+                  name: (user as any).employee.department.name,
+                }
+              : null,
+          }
+        : null,
+    };
+  }
+
+  async changePassword(
+    userId: string,
+    dto: ChangePasswordDto,
+  ): Promise<{ message: string }> {
+    const user = await this.authRepository.findById(userId);
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException(
+        'Pengguna tidak ditemukan atau tidak aktif',
+      );
+    }
+
+    const isPasswordValid = await bcrypt.compare(
+      dto.currentPassword,
+      user.passwordHash,
+    );
+    if (!isPasswordValid) {
+      throw new BadRequestException('Password saat ini tidak sesuai');
+    }
+
+    const newPasswordHash = await bcrypt.hash(dto.newPassword, 10);
+    await this.authRepository.updatePassword(userId, newPasswordHash);
+
+    return {
+      message: 'Password berhasil diubah',
     };
   }
 }
