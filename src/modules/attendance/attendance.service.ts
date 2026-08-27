@@ -6,14 +6,22 @@ import {
 } from '@nestjs/common';
 import { AttendanceStatus, UserRole } from '@prisma/client';
 import { AttendanceRepository } from './attendance.repository';
+import { WorkScheduleRepository } from '../work-schedule/work-schedule.repository';
 import { CheckInDto } from './dto/check-in.dto';
 import { CheckOutDto } from './dto/check-out.dto';
 import { AttendanceQueryDto } from './dto/attendance-query.dto';
 import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
+import {
+  getWibTimeParts,
+  parseTimeString,
+} from '../../common/utils/timezone.util';
 
 @Injectable()
 export class AttendanceService {
-  constructor(private readonly attendanceRepository: AttendanceRepository) {}
+  constructor(
+    private readonly attendanceRepository: AttendanceRepository,
+    private readonly workScheduleRepository: WorkScheduleRepository,
+  ) {}
 
   private getTodayUtcDate(): Date {
     const now = new Date();
@@ -44,14 +52,25 @@ export class AttendanceService {
 
     const nowUtc = new Date();
 
-    // TODO: Cutoff time / late threshold logic to be implemented once organization business hours are agreed upon
-    const defaultStatus = AttendanceStatus.PRESENT;
+    // 2. FR-3.3 Automatic Classification: PRESENT vs LATE based on active WorkSchedule
+    const schedule = await this.workScheduleRepository.findActive();
+    const { totalMinutes: checkInMinutes } = getWibTimeParts(nowUtc);
+    const { totalMinutes: startMinutes } = parseTimeString(
+      schedule?.startTime || '09:00',
+    );
+    const tolerance = schedule?.lateToleranceMinutes ?? 15;
+    const cutoffMinutes = startMinutes + tolerance;
+
+    const status =
+      checkInMinutes <= cutoffMinutes
+        ? AttendanceStatus.PRESENT
+        : AttendanceStatus.LATE;
 
     return this.attendanceRepository.checkIn({
       employeeId: currentUser.employeeId,
       attendanceDate: todayUtc,
       checkIn: nowUtc,
-      status: defaultStatus,
+      status,
       notes: checkInDto.notes,
     });
   }

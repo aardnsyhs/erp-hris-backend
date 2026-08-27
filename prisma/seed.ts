@@ -43,6 +43,21 @@ async function main() {
 
   console.log(`- Created/Verified Departments: ENG (${engDept.id}), HR (${hrDept.id})`);
 
+  // 1.1 Work Schedule (Singleton)
+  console.log('1.1 Seeding Default Work Schedule...');
+  const defaultSchedule = await prisma.workSchedule.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000001' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000000001',
+      startTime: '09:00',
+      lateToleranceMinutes: 15,
+      standardWorkMinutes: 480,
+      isActive: true,
+    },
+  });
+  console.log(`- Verified Active Work Schedule (Start: ${defaultSchedule.startTime}, Tolerance: ${defaultSchedule.lateToleranceMinutes}m, Target: ${defaultSchedule.standardWorkMinutes}m)`);
+
   // 2. Password Hash for Users
   const devPassword = 'password123';
   const saltRounds = 10;

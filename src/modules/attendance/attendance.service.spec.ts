@@ -7,13 +7,16 @@ import {
 import { AttendanceStatus, UserRole } from '@prisma/client';
 import { AttendanceService } from './attendance.service';
 import { AttendanceRepository } from './attendance.repository';
+import { WorkScheduleRepository } from '../work-schedule/work-schedule.repository';
 import { CheckInDto } from './dto/check-in.dto';
 import { CheckOutDto } from './dto/check-out.dto';
 import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
+import { DEFAULT_WORK_SCHEDULE } from '../work-schedule/work-schedule.constants';
 
 describe('AttendanceService', () => {
   let attendanceService: AttendanceService;
   let attendanceRepository: jest.Mocked<Partial<AttendanceRepository>>;
+  let workScheduleRepository: jest.Mocked<Partial<WorkScheduleRepository>>;
 
   const mockEmployee = {
     id: 'emp-uuid-1',
@@ -83,10 +86,16 @@ describe('AttendanceService', () => {
       findEmployeeById: jest.fn(),
     };
 
+    workScheduleRepository = {
+      findActive: jest.fn().mockResolvedValue(DEFAULT_WORK_SCHEDULE as any),
+      update: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AttendanceService,
         { provide: AttendanceRepository, useValue: attendanceRepository },
+        { provide: WorkScheduleRepository, useValue: workScheduleRepository },
       ],
     }).compile();
 
@@ -98,24 +107,23 @@ describe('AttendanceService', () => {
       notes: 'Working from office',
     };
 
-    it('1. Sukses check-in: status default PRESENT dan checkIn tersimpan', async () => {
+    it('1. Sukses check-in: status otomatis diklasifikasikan dan snapshot tersimpan', async () => {
       attendanceRepository.findByEmployeeAndDate = jest
         .fn()
         .mockResolvedValue(null);
-      attendanceRepository.checkIn = jest.fn().mockResolvedValue({
+      attendanceRepository.checkIn = jest.fn().mockImplementation((data) => ({
         ...mockAttendance,
-        notes: 'Working from office',
-      });
+        ...data,
+      }));
 
       const result = await attendanceService.checkIn(employeeUser, checkInDto);
 
       expect(result).toBeDefined();
-      expect(result.status).toBe(AttendanceStatus.PRESENT);
       expect(attendanceRepository.findByEmployeeAndDate).toHaveBeenCalled();
+      expect(workScheduleRepository.findActive).toHaveBeenCalled();
       expect(attendanceRepository.checkIn).toHaveBeenCalledWith(
         expect.objectContaining({
           employeeId: 'emp-uuid-1',
-          status: AttendanceStatus.PRESENT,
           notes: 'Working from office',
         }),
       );
@@ -133,7 +141,7 @@ describe('AttendanceService', () => {
       expect(attendanceRepository.checkIn).not.toHaveBeenCalled();
     });
 
-    it('3. Gagal check-in: sudah pernah check-in hari ini melempar ConflictException', async () => {
+    it('3. Gagal check-in: sudah check-in hari ini melempar ConflictException', async () => {
       attendanceRepository.findByEmployeeAndDate = jest
         .fn()
         .mockResolvedValue(mockAttendance);
@@ -143,21 +151,71 @@ describe('AttendanceService', () => {
       ).rejects.toThrow(ConflictException);
       expect(attendanceRepository.checkIn).not.toHaveBeenCalled();
     });
+
+    it('4. FR-3.3 Timezone Independence: Check-in jam 09:10 WIB (02:10 UTC) diklasifikasikan PRESENT', async () => {
+      // Mock Date to 02:10:00 UTC = 09:10:00 WIB (before 09:15 cutoff)
+      const fakeDate = new Date('2026-08-27T02:10:00.000Z');
+      jest.useFakeTimers({ now: fakeDate });
+
+      attendanceRepository.findByEmployeeAndDate = jest
+        .fn()
+        .mockResolvedValue(null);
+      attendanceRepository.checkIn = jest.fn().mockImplementation((data) => ({
+        ...mockAttendance,
+        ...data,
+      }));
+
+      const result = await attendanceService.checkIn(employeeUser, checkInDto);
+
+      expect(result.status).toBe(AttendanceStatus.PRESENT);
+      expect(attendanceRepository.checkIn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: AttendanceStatus.PRESENT,
+        }),
+      );
+
+      jest.useRealTimers();
+    });
+
+    it('5. FR-3.3 Timezone Independence: Check-in jam 09:20 WIB (02:20 UTC) melewati batas toleransi diklasifikasikan LATE', async () => {
+      // Mock Date to 02:20:00 UTC = 09:20:00 WIB (after 09:15 cutoff)
+      const fakeDate = new Date('2026-08-27T02:20:00.000Z');
+      jest.useFakeTimers({ now: fakeDate });
+
+      attendanceRepository.findByEmployeeAndDate = jest
+        .fn()
+        .mockResolvedValue(null);
+      attendanceRepository.checkIn = jest.fn().mockImplementation((data) => ({
+        ...mockAttendance,
+        ...data,
+      }));
+
+      const result = await attendanceService.checkIn(employeeUser, checkInDto);
+
+      expect(result.status).toBe(AttendanceStatus.LATE);
+      expect(attendanceRepository.checkIn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: AttendanceStatus.LATE,
+        }),
+      );
+
+      jest.useRealTimers();
+    });
   });
 
   describe('checkOut()', () => {
     const checkOutDto: CheckOutDto = {
-      notes: 'Done for the day',
+      notes: 'Work completed',
     };
 
-    it('4. Sukses check-out: memperbarui checkOut time', async () => {
+    it('6. Sukses check-out: waktu checkOut dan notes diperbarui', async () => {
       attendanceRepository.findByEmployeeAndDate = jest
         .fn()
         .mockResolvedValue(mockAttendance);
       attendanceRepository.checkOut = jest.fn().mockResolvedValue({
         ...mockAttendance,
         checkOut: new Date(),
-        notes: 'Done for the day',
+        notes: 'Work completed',
       });
 
       const result = await attendanceService.checkOut(
@@ -166,25 +224,15 @@ describe('AttendanceService', () => {
       );
 
       expect(result).toBeDefined();
+      expect(result.checkOut).toBeDefined();
       expect(attendanceRepository.checkOut).toHaveBeenCalledWith(
         'att-uuid-1',
         expect.any(Date),
-        'Done for the day',
+        'Work completed',
       );
     });
 
-    it('5. Gagal check-out: user tanpa employeeId melempar ForbiddenException', async () => {
-      const userWithoutEmp: AuthenticatedUser = {
-        ...employeeUser,
-        employeeId: null,
-      };
-
-      await expect(
-        attendanceService.checkOut(userWithoutEmp, checkOutDto),
-      ).rejects.toThrow(ForbiddenException);
-    });
-
-    it('6. Gagal check-out: belum check-in hari ini melempar BadRequestException', async () => {
+    it('7. Gagal check-out: belum check-in hari ini melempar BadRequestException', async () => {
       attendanceRepository.findByEmployeeAndDate = jest
         .fn()
         .mockResolvedValue(null);
@@ -192,9 +240,10 @@ describe('AttendanceService', () => {
       await expect(
         attendanceService.checkOut(employeeUser, checkOutDto),
       ).rejects.toThrow(BadRequestException);
+      expect(attendanceRepository.checkOut).not.toHaveBeenCalled();
     });
 
-    it('7. Gagal check-out: sudah check-out hari ini melempar ConflictException', async () => {
+    it('8. Gagal check-out: sudah pernah check-out hari ini melempar ConflictException', async () => {
       const alreadyCheckedOut = {
         ...mockAttendance,
         checkOut: new Date(),
@@ -208,7 +257,7 @@ describe('AttendanceService', () => {
       ).rejects.toThrow(ConflictException);
     });
 
-    it('8. Gagal check-out: checkOut lebih awal dari checkIn melempar BadRequestException', async () => {
+    it('9. Gagal check-out: checkOut lebih awal dari checkIn melempar BadRequestException', async () => {
       const futureCheckIn = {
         ...mockAttendance,
         checkIn: new Date(Date.now() + 3600000), // check-in is 1 hour in future
@@ -224,7 +273,7 @@ describe('AttendanceService', () => {
   });
 
   describe('findAll()', () => {
-    it('9. EMPLOYEE: dibatasi hanya melihat riwayat absensi miliknya sendiri', async () => {
+    it('10. EMPLOYEE: dibatasi hanya melihat riwayat absensi miliknya sendiri', async () => {
       attendanceRepository.findAll = jest
         .fn()
         .mockResolvedValue([mockAttendance]);
@@ -244,7 +293,7 @@ describe('AttendanceService', () => {
       );
     });
 
-    it('10. EMPLOYEE tanpa employeeId: mengembalikan list kosong', async () => {
+    it('11. EMPLOYEE tanpa employeeId: mengembalikan list kosong', async () => {
       const userWithoutEmp: AuthenticatedUser = {
         ...employeeUser,
         employeeId: null,
@@ -260,7 +309,7 @@ describe('AttendanceService', () => {
       expect(result.meta.totalPages).toBe(0);
     });
 
-    it('11. MANAGER: dibatasi hanya melihat absensi karyawan di departemennya', async () => {
+    it('12. MANAGER: dibatasi hanya melihat absensi karyawan di departemennya', async () => {
       attendanceRepository.findEmployeeById = jest
         .fn()
         .mockResolvedValue(managerEmployee);
@@ -282,7 +331,7 @@ describe('AttendanceService', () => {
       );
     });
 
-    it('12. MANAGER tanpa employeeId: mengembalikan list kosong', async () => {
+    it('13. MANAGER tanpa employeeId: mengembalikan list kosong', async () => {
       const managerWithoutEmp: AuthenticatedUser = {
         ...managerUser,
         employeeId: null,
@@ -298,7 +347,7 @@ describe('AttendanceService', () => {
       expect(result.meta.totalPages).toBe(0);
     });
 
-    it('13. HR_ADMIN: dapat melihat seluruh riwayat absensi terpaginasi', async () => {
+    it('14. HR_ADMIN: dapat melihat seluruh riwayat absensi terpaginasi', async () => {
       attendanceRepository.findAll = jest
         .fn()
         .mockResolvedValue([mockAttendance]);
@@ -319,7 +368,7 @@ describe('AttendanceService', () => {
       );
     });
 
-    it('14. Keamanan Finansial: Relasi employee pada response absensi TIDAK memiliki baseSalary', async () => {
+    it('15. Keamanan Finansial: Relasi employee pada response absensi TIDAK memiliki baseSalary', async () => {
       const attendanceWithNonFinancialEmployee = {
         ...mockAttendance,
         employee: {

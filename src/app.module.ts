@@ -11,6 +11,7 @@ import { EmployeeModule } from './modules/employee/employee.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { LeaveRequestModule } from './modules/leave-request/leave-request.module';
 import { PayrollModule } from './modules/payroll/payroll.module';
+import { WorkScheduleModule } from './modules/work-schedule/work-schedule.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 
@@ -36,6 +37,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     AttendanceModule,
     LeaveRequestModule,
     PayrollModule,
+    WorkScheduleModule,
   ],
   controllers: [AppController],
   providers: [
