@@ -13,9 +13,20 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { EmployeeStatus } from '@prisma/client';
+import { EmployeeStatus, UserRole } from '@prisma/client';
 
 export class CreateEmployeeDto {
+  @ApiProperty({
+    enum: UserRole,
+    example: UserRole.EMPLOYEE,
+    description: 'Role akses akun login karyawan (HR_ADMIN, MANAGER, EMPLOYEE)',
+  })
+  @IsEnum(UserRole, {
+    message: 'Role harus bernilai HR_ADMIN, MANAGER, atau EMPLOYEE',
+  })
+  @IsNotEmpty({ message: 'Role akun karyawan tidak boleh kosong' })
+  role: UserRole;
+
   @ApiProperty({
     example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
     description: 'UUID departemen tempat karyawan bekerja',

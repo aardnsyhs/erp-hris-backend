@@ -1,10 +1,36 @@
 import { Injectable } from '@nestjs/common';
-import { Department, Employee, EmployeeStatus, Prisma } from '@prisma/client';
+import { Department, Employee, EmployeeStatus, Prisma, User, UserRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
 export class EmployeeRepository {
   constructor(private readonly prisma: PrismaService) {}
+
+  async createWithUser(
+    employeeData: Prisma.EmployeeUncheckedCreateInput,
+    userData: { email: string; passwordHash: string; role: UserRole },
+  ): Promise<Employee> {
+    return this.prisma.$transaction(async (tx) => {
+      const employee = await tx.employee.create({
+        data: employeeData,
+        include: {
+          department: true,
+        },
+      });
+
+      await tx.user.create({
+        data: {
+          email: userData.email,
+          passwordHash: userData.passwordHash,
+          role: userData.role,
+          isActive: true,
+          employeeId: employee.id,
+        },
+      });
+
+      return employee;
+    });
+  }
 
   async create(data: Prisma.EmployeeUncheckedCreateInput): Promise<Employee> {
     return this.prisma.employee.create({
@@ -12,6 +38,12 @@ export class EmployeeRepository {
       include: {
         department: true,
       },
+    });
+  }
+
+  async findUserByEmail(email: string): Promise<User | null> {
+    return this.prisma.user.findUnique({
+      where: { email },
     });
   }
 

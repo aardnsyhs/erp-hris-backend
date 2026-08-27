@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { EmployeeStatus, Prisma, UserRole } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
 import { EmployeeService, AuthenticatedUser } from './employee.service';
 import { EmployeeRepository } from './employee.repository';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
@@ -75,11 +76,13 @@ describe('EmployeeService', () => {
   beforeEach(async () => {
     employeeRepository = {
       create: jest.fn(),
+      createWithUser: jest.fn(),
       findAll: jest.fn(),
       countAll: jest.fn(),
       findById: jest.fn(),
       findByNip: jest.fn(),
       findByEmail: jest.fn(),
+      findUserByEmail: jest.fn(),
       findDepartmentById: jest.fn(),
       update: jest.fn(),
       softDelete: jest.fn(),
@@ -104,25 +107,50 @@ describe('EmployeeService', () => {
       jobTitle: 'Software Engineer',
       hireDate: new Date('2024-01-01'),
       baseSalary: '12000000',
+      role: UserRole.EMPLOYEE,
     };
 
-    it('1. Sukses membuat karyawan baru', async () => {
+    it('1. Sukses membuat karyawan baru dan membuat akun login User otomatis', async () => {
       employeeRepository.findDepartmentById = jest
         .fn()
         .mockResolvedValue(mockDepartment);
       employeeRepository.findByNip = jest.fn().mockResolvedValue(null);
       employeeRepository.findByEmail = jest.fn().mockResolvedValue(null);
-      employeeRepository.create = jest.fn().mockResolvedValue(mockEmployee);
+      employeeRepository.findUserByEmail = jest.fn().mockResolvedValue(null);
+      employeeRepository.createWithUser = jest
+        .fn()
+        .mockResolvedValue(mockEmployee);
 
       const result = await employeeService.create(createDto);
 
-      expect(result).toEqual(mockEmployee);
-      expect(employeeRepository.create).toHaveBeenCalledWith(
+      expect(result).toBeDefined();
+      expect(result.id).toBe(mockEmployee.id);
+      expect(result.temporaryPassword).toBeDefined();
+      expect(typeof result.temporaryPassword).toBe('string');
+      expect(result.temporaryPassword.length).toBe(10);
+
+      // Verify that createWithUser was called with employee data and hashed user data
+      expect(employeeRepository.createWithUser).toHaveBeenCalledWith(
         expect.objectContaining({
           nip: 'EMP001',
+          email: 'john@example.com',
           baseSalary: expect.any(Prisma.Decimal),
         }),
+        expect.objectContaining({
+          email: 'john@example.com',
+          role: UserRole.EMPLOYEE,
+          passwordHash: expect.any(String),
+        }),
       );
+
+      // Verify that temporaryPassword matches the generated passwordHash via bcrypt
+      const passedUser = (employeeRepository.createWithUser as jest.Mock).mock
+        .calls[0][1];
+      const bcryptMatch = await bcrypt.compare(
+        result.temporaryPassword,
+        passedUser.passwordHash,
+      );
+      expect(bcryptMatch).toBe(true);
     });
 
     it('2. Gagal: Departemen tidak ditemukan melempar BadRequestException', async () => {
@@ -131,7 +159,7 @@ describe('EmployeeService', () => {
       await expect(employeeService.create(createDto)).rejects.toThrow(
         BadRequestException,
       );
-      expect(employeeRepository.create).not.toHaveBeenCalled();
+      expect(employeeRepository.createWithUser).not.toHaveBeenCalled();
     });
 
     it('3. Gagal: NIP duplikat melempar ConflictException', async () => {
@@ -143,10 +171,10 @@ describe('EmployeeService', () => {
       await expect(employeeService.create(createDto)).rejects.toThrow(
         ConflictException,
       );
-      expect(employeeRepository.create).not.toHaveBeenCalled();
+      expect(employeeRepository.createWithUser).not.toHaveBeenCalled();
     });
 
-    it('4. Gagal: Email duplikat melempar ConflictException', async () => {
+    it('4. Gagal: Email duplikat di tabel employees melempar ConflictException', async () => {
       employeeRepository.findDepartmentById = jest
         .fn()
         .mockResolvedValue(mockDepartment);
@@ -158,6 +186,23 @@ describe('EmployeeService', () => {
       await expect(employeeService.create(createDto)).rejects.toThrow(
         ConflictException,
       );
+      expect(employeeRepository.createWithUser).not.toHaveBeenCalled();
+    });
+
+    it('5. Gagal: Email sudah terdaftar di tabel users melempar ConflictException', async () => {
+      employeeRepository.findDepartmentById = jest
+        .fn()
+        .mockResolvedValue(mockDepartment);
+      employeeRepository.findByNip = jest.fn().mockResolvedValue(null);
+      employeeRepository.findByEmail = jest.fn().mockResolvedValue(null);
+      employeeRepository.findUserByEmail = jest
+        .fn()
+        .mockResolvedValue({ id: 'user-uuid', email: 'john@example.com' } as any);
+
+      await expect(employeeService.create(createDto)).rejects.toThrow(
+        ConflictException,
+      );
+      expect(employeeRepository.createWithUser).not.toHaveBeenCalled();
     });
   });
 

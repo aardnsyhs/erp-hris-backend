@@ -36,11 +36,15 @@ export class EmployeeController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
-    summary: 'Tambah karyawan baru (HR_ADMIN only)',
+    summary: 'Tambah karyawan baru dan buat akun login otomatis (HR_ADMIN only)',
     description:
-      'Membuat data karyawan baru. NIP dan email harus unik, departmentId harus valid.',
+      'Membuat data karyawan baru sekaligus membuat akun login User secara atomik dalam satu transaction. Mengembalikan temporaryPassword plaintext hanya satu kali pada response ini.',
   })
-  @ApiResponse({ status: 201, description: 'Karyawan berhasil dibuat' })
+  @ApiResponse({
+    status: 201,
+    description:
+      'Karyawan dan akun login berhasil dibuat. Menyertakan temporaryPassword.',
+  })
   @ApiResponse({
     status: 400,
     description: 'Validasi gagal atau departemen tidak ditemukan',

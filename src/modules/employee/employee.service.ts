@@ -6,6 +6,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, UserRole } from '@prisma/client';
+import * as crypto from 'crypto';
+import * as bcrypt from 'bcrypt';
 import { EmployeeRepository } from './employee.repository';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
@@ -46,12 +48,42 @@ export class EmployeeService {
       );
     }
 
-    const baseSalaryDecimal = new Prisma.Decimal(createEmployeeDto.baseSalary);
+    // 2. Validasi unik email di tabel users
+    const existingUser = await this.employeeRepository.findUserByEmail(
+      createEmployeeDto.email,
+    );
+    if (existingUser) {
+      throw new ConflictException(
+        'Email sudah terdaftar sebagai akun pengguna',
+      );
+    }
 
-    return this.employeeRepository.create({
-      ...createEmployeeDto,
-      baseSalary: baseSalaryDecimal,
-    });
+    // 3. Generate password sementara & hash dengan bcrypt
+    const temporaryPassword = crypto.randomBytes(5).toString('hex');
+    const saltRounds = 10;
+    const passwordHash = await bcrypt.hash(temporaryPassword, saltRounds);
+
+    const baseSalaryDecimal = new Prisma.Decimal(createEmployeeDto.baseSalary);
+    const { role, ...employeeFields } = createEmployeeDto;
+
+    // 4. Buat Employee dan User secara atomik dalam satu transaction
+    const employee = await this.employeeRepository.createWithUser(
+      {
+        ...employeeFields,
+        baseSalary: baseSalaryDecimal,
+      },
+      {
+        email: createEmployeeDto.email,
+        passwordHash,
+        role,
+      },
+    );
+
+    // 5. Kembalikan data employee bersama temporaryPassword plaintext (hanya muncul di response ini)
+    return {
+      ...employee,
+      temporaryPassword,
+    };
   }
 
   async findAll(query: EmployeeQueryDto, currentUser: AuthenticatedUser) {
