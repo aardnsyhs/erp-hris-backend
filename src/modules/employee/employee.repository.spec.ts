@@ -139,16 +139,14 @@ describe('EmployeeRepository', () => {
   });
 
   describe('findAll() & countAll()', () => {
-    it('4. findAll tanpa status filter secara default menerapkan deletedAt: null', async () => {
+    it('4. findAll tanpa status filter mengembalikan semua status tanpa pembatasan deletedAt: null', async () => {
       (prisma.employee.findMany as jest.Mock).mockResolvedValue([mockEmployee]);
 
       await repository.findAll({ skip: 0, take: 10 });
 
       expect(prisma.employee.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({
-            deletedAt: null,
-          }),
+          where: {},
         }),
       );
     });

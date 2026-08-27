@@ -55,7 +55,7 @@ export class EmployeeRepository {
     status?: EmployeeStatus;
   }): Promise<Employee[]> {
     const where: Prisma.EmployeeWhereInput = {
-      ...(options.status ? { status: options.status } : { deletedAt: null }),
+      ...(options.status ? { status: options.status } : {}),
       ...(options.departmentId && { departmentId: options.departmentId }),
       ...(options.search && {
         OR: [
@@ -84,7 +84,7 @@ export class EmployeeRepository {
     status?: EmployeeStatus;
   }): Promise<number> {
     const where: Prisma.EmployeeWhereInput = {
-      ...(options.status ? { status: options.status } : { deletedAt: null }),
+      ...(options.status ? { status: options.status } : {}),
       ...(options.departmentId && { departmentId: options.departmentId }),
       ...(options.search && {
         OR: [
