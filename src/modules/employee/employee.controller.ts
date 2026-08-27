@@ -113,9 +113,9 @@ export class EmployeeController {
   @Roles(UserRole.HR_ADMIN)
   @Delete(':id')
   @ApiOperation({
-    summary: 'Nonaktifkan / Soft Delete karyawan (HR_ADMIN only)',
+    summary: 'Nonaktifkan sementara / Soft Delete karyawan (HR_ADMIN only)',
     description:
-      'Menyetel deletedAt ke waktu sekarang dan status menjadi INACTIVE.',
+      'Menyetel deletedAt ke waktu sekarang dan status menjadi INACTIVE, serta menonaktifkan akun login User terkait.',
   })
   @ApiParam({ name: 'id', description: 'UUID karyawan' })
   @ApiResponse({ status: 200, description: 'Karyawan berhasil dinonaktifkan' })
@@ -125,19 +125,37 @@ export class EmployeeController {
   }
 
   @Roles(UserRole.HR_ADMIN)
+  @Patch(':id/terminate')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Berhentikan karyawan secara permanen (HR_ADMIN only)',
+    description:
+      'Menyetel status karyawan menjadi TERMINATED, mengisi deletedAt, dan menonaktifkan akun login User terkait secara permanen.',
+  })
+  @ApiParam({ name: 'id', description: 'UUID karyawan' })
+  @ApiResponse({
+    status: 200,
+    description: 'Karyawan berhasil diberhentikan secara permanen',
+  })
+  @ApiResponse({ status: 404, description: 'Karyawan tidak ditemukan' })
+  async terminate(@Param('id') id: string) {
+    return this.employeeService.terminate(id);
+  }
+
+  @Roles(UserRole.HR_ADMIN)
   @Patch(':id/reactivate')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Aktifkan kembali karyawan yang sudah dinonaktifkan (HR_ADMIN only)',
+    summary: 'Aktifkan kembali karyawan yang berstatus INACTIVE (HR_ADMIN only)',
     description:
-      'Mengembalikan status karyawan menjadi ACTIVE dan menyetel deletedAt kembali ke null.',
+      'Mengembalikan status karyawan menjadi ACTIVE dan menyetel deletedAt kembali ke null. Ditolak jika karyawan berstatus TERMINATED.',
   })
   @ApiParam({ name: 'id', description: 'UUID karyawan' })
   @ApiResponse({
     status: 200,
     description: 'Karyawan berhasil diaktifkan kembali',
   })
-  @ApiResponse({ status: 400, description: 'Karyawan sudah aktif' })
+  @ApiResponse({ status: 400, description: 'Karyawan sudah aktif atau berstatus TERMINATED' })
   @ApiResponse({ status: 404, description: 'Karyawan tidak ditemukan' })
   @ApiResponse({
     status: 409,

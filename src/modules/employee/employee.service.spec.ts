@@ -487,7 +487,10 @@ describe('EmployeeService', () => {
       const result = await employeeService.remove('emp-uuid-1');
 
       expect(result).toEqual({ message: 'Karyawan berhasil dinonaktifkan' });
-      expect(employeeRepository.softDelete).toHaveBeenCalledWith('emp-uuid-1');
+      expect(employeeRepository.softDelete).toHaveBeenCalledWith(
+        'emp-uuid-1',
+        EmployeeStatus.INACTIVE,
+      );
     });
 
     it('20. Gagal: menghapus karyawan yang tidak ditemukan melempar NotFoundException', async () => {
@@ -500,6 +503,36 @@ describe('EmployeeService', () => {
     });
   });
 
+  describe('terminate()', () => {
+    it('21. Sukses memberhentikan permanen karyawan (softDelete dengan status TERMINATED)', async () => {
+      employeeRepository.findById = jest.fn().mockResolvedValue(mockEmployee);
+      employeeRepository.softDelete = jest.fn().mockResolvedValue({
+        ...mockEmployee,
+        status: EmployeeStatus.TERMINATED,
+        deletedAt: new Date(),
+      });
+
+      const result = await employeeService.terminate('emp-uuid-1');
+
+      expect(result).toEqual({
+        message: 'Karyawan berhasil diberhentikan secara permanen (TERMINATED)',
+      });
+      expect(employeeRepository.softDelete).toHaveBeenCalledWith(
+        'emp-uuid-1',
+        EmployeeStatus.TERMINATED,
+      );
+    });
+
+    it('22. Gagal: terminate karyawan yang tidak ditemukan melempar NotFoundException', async () => {
+      employeeRepository.findById = jest.fn().mockResolvedValue(null);
+
+      await expect(
+        employeeService.terminate('non-existent-id'),
+      ).rejects.toThrow(NotFoundException);
+      expect(employeeRepository.softDelete).not.toHaveBeenCalled();
+    });
+  });
+
   describe('reactivate()', () => {
     const inactiveEmployee = {
       ...mockEmployee,
@@ -507,7 +540,13 @@ describe('EmployeeService', () => {
       deletedAt: new Date('2024-01-01'),
     };
 
-    it('21. Sukses reaktivasi karyawan yang soft-deleted (status ACTIVE, deletedAt null)', async () => {
+    const terminatedEmployee = {
+      ...mockEmployee,
+      status: EmployeeStatus.TERMINATED,
+      deletedAt: new Date('2024-01-01'),
+    };
+
+    it('23. Sukses reaktivasi karyawan yang soft-deleted INACTIVE (status ACTIVE, deletedAt null)', async () => {
       employeeRepository.findByIdIncludingDeleted = jest
         .fn()
         .mockResolvedValue(inactiveEmployee);
@@ -526,7 +565,25 @@ describe('EmployeeService', () => {
       expect(employeeRepository.reactivate).toHaveBeenCalledWith('emp-uuid-1');
     });
 
-    it('22. Gagal: reaktivasi ID yang tidak ditemukan melempar NotFoundException', async () => {
+    it('24. Gagal: reaktivasi karyawan dengan status TERMINATED melempar BadRequestException', async () => {
+      employeeRepository.findByIdIncludingDeleted = jest
+        .fn()
+        .mockResolvedValue(terminatedEmployee);
+
+      await expect(employeeService.reactivate('emp-uuid-1')).rejects.toThrow(
+        BadRequestException,
+      );
+      try {
+        await employeeService.reactivate('emp-uuid-1');
+      } catch (err: any) {
+        expect(err.message).toBe(
+          'Karyawan yang telah diberhentikan permanen (TERMINATED) tidak dapat diaktifkan kembali',
+        );
+      }
+      expect(employeeRepository.reactivate).not.toHaveBeenCalled();
+    });
+
+    it('25. Gagal: reaktivasi ID yang tidak ditemukan melempar NotFoundException', async () => {
       employeeRepository.findByIdIncludingDeleted = jest
         .fn()
         .mockResolvedValue(null);
@@ -537,7 +594,7 @@ describe('EmployeeService', () => {
       expect(employeeRepository.reactivate).not.toHaveBeenCalled();
     });
 
-    it('23. Gagal: reaktivasi karyawan yang belum pernah di-soft-delete (sudah aktif) melempar BadRequestException', async () => {
+    it('26. Gagal: reaktivasi karyawan yang belum pernah di-soft-delete (sudah aktif) melempar BadRequestException', async () => {
       employeeRepository.findByIdIncludingDeleted = jest
         .fn()
         .mockResolvedValue(mockEmployee); // mockEmployee has deletedAt: null
@@ -548,7 +605,7 @@ describe('EmployeeService', () => {
       expect(employeeRepository.reactivate).not.toHaveBeenCalled();
     });
 
-    it('24. Gagal: NIP bentrok dengan karyawan aktif lain melempar ConflictException', async () => {
+    it('27. Gagal: NIP bentrok dengan karyawan aktif lain melempar ConflictException', async () => {
       employeeRepository.findByIdIncludingDeleted = jest
         .fn()
         .mockResolvedValue(inactiveEmployee);

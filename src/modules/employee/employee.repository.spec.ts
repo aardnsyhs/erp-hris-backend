@@ -115,6 +115,17 @@ describe('EmployeeRepository', () => {
       expect(result.status).toBe(EmployeeStatus.INACTIVE);
       expect(result.deletedAt).toBeInstanceOf(Date);
     });
+
+    it('2b. Soft delete: memberhentikan permanen Employee (TERMINATED, deletedAt terisi) dan menyinkronkan User (isActive: false)', async () => {
+      const result = await repository.softDelete(
+        'emp-uuid-1',
+        EmployeeStatus.TERMINATED,
+      );
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(result.status).toBe(EmployeeStatus.TERMINATED);
+      expect(result.deletedAt).toBeInstanceOf(Date);
+    });
   });
 
   describe('reactivate()', () => {

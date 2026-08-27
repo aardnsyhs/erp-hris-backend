@@ -157,13 +157,16 @@ export class EmployeeRepository {
     });
   }
 
-  async softDelete(id: string): Promise<Employee> {
+  async softDelete(
+    id: string,
+    status: EmployeeStatus = EmployeeStatus.INACTIVE,
+  ): Promise<Employee> {
     return this.prisma.$transaction(async (tx) => {
       const employee = await tx.employee.update({
         where: { id },
         data: {
           deletedAt: new Date(),
-          status: EmployeeStatus.INACTIVE,
+          status,
         },
       });
 

@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, UserRole } from '@prisma/client';
+import { EmployeeStatus, Prisma, UserRole } from '@prisma/client';
 import * as crypto from 'crypto';
 import * as bcrypt from 'bcrypt';
 import { EmployeeRepository } from './employee.repository';
@@ -271,10 +271,23 @@ export class EmployeeService {
       throw new NotFoundException(`Karyawan dengan ID '${id}' tidak ditemukan`);
     }
 
-    await this.employeeRepository.softDelete(id);
+    await this.employeeRepository.softDelete(id, EmployeeStatus.INACTIVE);
 
     return {
       message: 'Karyawan berhasil dinonaktifkan',
+    };
+  }
+
+  async terminate(id: string) {
+    const employee = await this.employeeRepository.findById(id);
+    if (!employee) {
+      throw new NotFoundException(`Karyawan dengan ID '${id}' tidak ditemukan`);
+    }
+
+    await this.employeeRepository.softDelete(id, EmployeeStatus.TERMINATED);
+
+    return {
+      message: 'Karyawan berhasil diberhentikan secara permanen (TERMINATED)',
     };
   }
 
@@ -287,6 +300,12 @@ export class EmployeeService {
 
     if (!employee.deletedAt) {
       throw new BadRequestException('Karyawan ini sudah aktif');
+    }
+
+    if (employee.status === EmployeeStatus.TERMINATED) {
+      throw new BadRequestException(
+        'Karyawan yang telah diberhentikan permanen (TERMINATED) tidak dapat diaktifkan kembali',
+      );
     }
 
     // Validasi keunikan NIP terhadap karyawan aktif lain
