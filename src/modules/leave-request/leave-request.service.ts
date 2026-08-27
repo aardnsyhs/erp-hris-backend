@@ -101,6 +101,20 @@ export class LeaveRequestService {
       }
     }
 
+    // Validasi overlap: pastikan belum ada cuti APPROVED lain pada rentang tanggal tersebut
+    const overlappingApproved =
+      await this.leaveRequestRepository.findOverlappingApproved(
+        leaveRequest.employeeId,
+        leaveRequest.startDate,
+        leaveRequest.endDate,
+      );
+
+    if (overlappingApproved && overlappingApproved.id !== leaveRequest.id) {
+      throw new ConflictException(
+        'Terdapat permohonan cuti lain yang sudah disetujui (APPROVED) pada rentang tanggal tersebut',
+      );
+    }
+
     return this.leaveRequestRepository.approve(
       id,
       currentUser.employeeId,

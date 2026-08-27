@@ -294,6 +294,27 @@ describe('LeaveRequestService', () => {
         leaveRequestService.approve('lr-uuid-1', managerOtherDeptUser),
       ).rejects.toThrow(ForbiddenException);
     });
+
+    it('10. Gagal approve: Terdapat permohonan cuti APPROVED lain yang overlap melempar ConflictException', async () => {
+      leaveRequestRepository.findById = jest
+        .fn()
+        .mockResolvedValue(mockLeaveRequest);
+      leaveRequestRepository.findEmployeeById = jest
+        .fn()
+        .mockResolvedValue(managerSameDept);
+      leaveRequestRepository.findOverlappingApproved = jest
+        .fn()
+        .mockResolvedValue({
+          ...mockLeaveRequest,
+          id: 'lr-other-already-approved',
+          status: LeaveRequestStatus.APPROVED,
+        });
+
+      await expect(
+        leaveRequestService.approve('lr-uuid-1', managerSameDeptUser),
+      ).rejects.toThrow(ConflictException);
+      expect(leaveRequestRepository.approve).not.toHaveBeenCalled();
+    });
   });
 
   describe('reject()', () => {
