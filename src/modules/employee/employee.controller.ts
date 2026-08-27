@@ -123,4 +123,27 @@ export class EmployeeController {
   async remove(@Param('id') id: string) {
     return this.employeeService.remove(id);
   }
+
+  @Roles(UserRole.HR_ADMIN)
+  @Patch(':id/reactivate')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Aktifkan kembali karyawan yang sudah dinonaktifkan (HR_ADMIN only)',
+    description:
+      'Mengembalikan status karyawan menjadi ACTIVE dan menyetel deletedAt kembali ke null.',
+  })
+  @ApiParam({ name: 'id', description: 'UUID karyawan' })
+  @ApiResponse({
+    status: 200,
+    description: 'Karyawan berhasil diaktifkan kembali',
+  })
+  @ApiResponse({ status: 400, description: 'Karyawan sudah aktif' })
+  @ApiResponse({ status: 404, description: 'Karyawan tidak ditemukan' })
+  @ApiResponse({
+    status: 409,
+    description: 'NIP atau email bentrok dengan karyawan aktif lain',
+  })
+  async reactivate(@Param('id') id: string) {
+    return this.employeeService.reactivate(id);
+  }
 }

@@ -278,6 +278,42 @@ export class EmployeeService {
     };
   }
 
+  async reactivate(id: string) {
+    const employee =
+      await this.employeeRepository.findByIdIncludingDeleted(id);
+    if (!employee) {
+      throw new NotFoundException(`Karyawan dengan ID '${id}' tidak ditemukan`);
+    }
+
+    if (!employee.deletedAt) {
+      throw new BadRequestException('Karyawan ini sudah aktif');
+    }
+
+    // Validasi keunikan NIP terhadap karyawan aktif lain
+    const existingNip = await this.employeeRepository.findByNip(employee.nip);
+    if (existingNip && existingNip.id !== id) {
+      throw new ConflictException(
+        `NIP '${employee.nip}' sudah digunakan oleh karyawan aktif lain`,
+      );
+    }
+
+    // Validasi keunikan Email terhadap karyawan aktif lain
+    const existingEmail = await this.employeeRepository.findByEmail(
+      employee.email,
+    );
+    if (existingEmail && existingEmail.id !== id) {
+      throw new ConflictException(
+        `Email '${employee.email}' sudah digunakan oleh karyawan aktif lain`,
+      );
+    }
+
+    const reactivated = await this.employeeRepository.reactivate(id);
+    return {
+      ...this.mapToFullView(reactivated),
+      message: 'Karyawan berhasil diaktifkan kembali',
+    };
+  }
+
   // --- Whitelist View Mappers ---
 
   private mapToFullView(employee: any) {

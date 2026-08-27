@@ -80,12 +80,14 @@ describe('EmployeeService', () => {
       findAll: jest.fn(),
       countAll: jest.fn(),
       findById: jest.fn(),
+      findByIdIncludingDeleted: jest.fn(),
       findByNip: jest.fn(),
       findByEmail: jest.fn(),
       findUserByEmail: jest.fn(),
       findDepartmentById: jest.fn(),
       update: jest.fn(),
       softDelete: jest.fn(),
+      reactivate: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -495,6 +497,69 @@ describe('EmployeeService', () => {
         NotFoundException,
       );
       expect(employeeRepository.softDelete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('reactivate()', () => {
+    const inactiveEmployee = {
+      ...mockEmployee,
+      status: EmployeeStatus.INACTIVE,
+      deletedAt: new Date('2024-01-01'),
+    };
+
+    it('21. Sukses reaktivasi karyawan yang soft-deleted (status ACTIVE, deletedAt null)', async () => {
+      employeeRepository.findByIdIncludingDeleted = jest
+        .fn()
+        .mockResolvedValue(inactiveEmployee);
+      employeeRepository.findByNip = jest.fn().mockResolvedValue(null);
+      employeeRepository.findByEmail = jest.fn().mockResolvedValue(null);
+      employeeRepository.reactivate = jest.fn().mockResolvedValue({
+        ...mockEmployee,
+        status: EmployeeStatus.ACTIVE,
+        deletedAt: null,
+      });
+
+      const result = await employeeService.reactivate('emp-uuid-1');
+
+      expect(result.id).toBe('emp-uuid-1');
+      expect(result.message).toBe('Karyawan berhasil diaktifkan kembali');
+      expect(employeeRepository.reactivate).toHaveBeenCalledWith('emp-uuid-1');
+    });
+
+    it('22. Gagal: reaktivasi ID yang tidak ditemukan melempar NotFoundException', async () => {
+      employeeRepository.findByIdIncludingDeleted = jest
+        .fn()
+        .mockResolvedValue(null);
+
+      await expect(
+        employeeService.reactivate('non-existent-id'),
+      ).rejects.toThrow(NotFoundException);
+      expect(employeeRepository.reactivate).not.toHaveBeenCalled();
+    });
+
+    it('23. Gagal: reaktivasi karyawan yang belum pernah di-soft-delete (sudah aktif) melempar BadRequestException', async () => {
+      employeeRepository.findByIdIncludingDeleted = jest
+        .fn()
+        .mockResolvedValue(mockEmployee); // mockEmployee has deletedAt: null
+
+      await expect(employeeService.reactivate('emp-uuid-1')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(employeeRepository.reactivate).not.toHaveBeenCalled();
+    });
+
+    it('24. Gagal: NIP bentrok dengan karyawan aktif lain melempar ConflictException', async () => {
+      employeeRepository.findByIdIncludingDeleted = jest
+        .fn()
+        .mockResolvedValue(inactiveEmployee);
+      employeeRepository.findByNip = jest
+        .fn()
+        .mockResolvedValue({ ...mockEmployee, id: 'other-emp-uuid' });
+
+      await expect(employeeService.reactivate('emp-uuid-1')).rejects.toThrow(
+        ConflictException,
+      );
+      expect(employeeRepository.reactivate).not.toHaveBeenCalled();
     });
   });
 });

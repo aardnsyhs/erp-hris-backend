@@ -158,7 +158,9 @@ describe('AuthService', () => {
         await authService.login(loginDto);
       } catch (error: any) {
         expect(error.getStatus()).toBe(HttpStatus.UNAUTHORIZED);
-        expect(error.message).toBe('Email atau password tidak valid');
+        expect(error.message).toBe(
+          'Akun Anda telah dinonaktifkan. Silakan hubungi Administrator HR.',
+        );
       }
     });
   });

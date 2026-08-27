@@ -32,7 +32,9 @@ export class AuthService {
     }
 
     if (!user.isActive) {
-      throw new UnauthorizedException(genericErrorMessage);
+      throw new UnauthorizedException(
+        'Akun Anda telah dinonaktifkan. Silakan hubungi Administrator HR.',
+      );
     }
 
     const isPasswordValid = await bcrypt.compare(

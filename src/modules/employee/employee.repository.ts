@@ -111,6 +111,15 @@ export class EmployeeRepository {
     });
   }
 
+  async findByIdIncludingDeleted(id: string): Promise<Employee | null> {
+    return this.prisma.employee.findUnique({
+      where: { id },
+      include: {
+        department: true,
+      },
+    });
+  }
+
   async findByNip(nip: string): Promise<Employee | null> {
     return this.prisma.employee.findFirst({
       where: {
@@ -149,12 +158,43 @@ export class EmployeeRepository {
   }
 
   async softDelete(id: string): Promise<Employee> {
-    return this.prisma.employee.update({
-      where: { id },
-      data: {
-        deletedAt: new Date(),
-        status: EmployeeStatus.INACTIVE,
-      },
+    return this.prisma.$transaction(async (tx) => {
+      const employee = await tx.employee.update({
+        where: { id },
+        data: {
+          deletedAt: new Date(),
+          status: EmployeeStatus.INACTIVE,
+        },
+      });
+
+      await tx.user.updateMany({
+        where: { employeeId: id },
+        data: { isActive: false },
+      });
+
+      return employee;
+    });
+  }
+
+  async reactivate(id: string): Promise<Employee> {
+    return this.prisma.$transaction(async (tx) => {
+      const employee = await tx.employee.update({
+        where: { id },
+        data: {
+          deletedAt: null,
+          status: EmployeeStatus.ACTIVE,
+        },
+        include: {
+          department: true,
+        },
+      });
+
+      await tx.user.updateMany({
+        where: { employeeId: id },
+        data: { isActive: true },
+      });
+
+      return employee;
     });
   }
 }
