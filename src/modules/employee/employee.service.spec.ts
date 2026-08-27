@@ -309,6 +309,53 @@ describe('EmployeeService', () => {
       expect(result.meta.total).toBe(1);
       expect(employeeRepository.findAll).not.toHaveBeenCalled();
     });
+
+    it('10. HR_ADMIN: filter status=INACTIVE memanggil repository dengan status=INACTIVE untuk mengembalikan karyawan soft-deleted', async () => {
+      const inactiveEmployee = {
+        ...mockEmployee,
+        status: EmployeeStatus.INACTIVE,
+        deletedAt: new Date(),
+      };
+
+      employeeRepository.findAll = jest
+        .fn()
+        .mockResolvedValue([inactiveEmployee]);
+      employeeRepository.countAll = jest.fn().mockResolvedValue(1);
+
+      const result = await employeeService.findAll(
+        { page: 1, limit: 10, status: EmployeeStatus.INACTIVE },
+        hrAdminUser,
+      );
+
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].status).toBe(EmployeeStatus.INACTIVE);
+      expect(employeeRepository.findAll).toHaveBeenCalledWith({
+        skip: 0,
+        take: 10,
+        search: undefined,
+        departmentId: undefined,
+        status: EmployeeStatus.INACTIVE,
+      });
+    });
+
+    it('11. HR_ADMIN: query tanpa filter status eksplisit meneruskan status: undefined sehingga mengecualikan soft-deleted by default', async () => {
+      employeeRepository.findAll = jest.fn().mockResolvedValue([mockEmployee]);
+      employeeRepository.countAll = jest.fn().mockResolvedValue(1);
+
+      const result = await employeeService.findAll(
+        { page: 1, limit: 10 },
+        hrAdminUser,
+      );
+
+      expect(result.data).toHaveLength(1);
+      expect(employeeRepository.findAll).toHaveBeenCalledWith({
+        skip: 0,
+        take: 10,
+        search: undefined,
+        departmentId: undefined,
+        status: undefined,
+      });
+    });
   });
 
   describe('findById()', () => {
