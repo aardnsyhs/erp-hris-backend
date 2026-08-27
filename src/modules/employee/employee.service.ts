@@ -177,7 +177,7 @@ export class EmployeeService {
   }
 
   async findById(id: string, currentUser: AuthenticatedUser) {
-    const employee = await this.employeeRepository.findById(id);
+    const employee = await this.employeeRepository.findByIdIncludingDeleted(id);
     if (!employee) {
       throw new NotFoundException(`Karyawan dengan ID '${id}' tidak ditemukan`);
     }
@@ -189,13 +189,24 @@ export class EmployeeService {
           'Anda hanya dapat mengakses profil Anda sendiri',
         );
       }
+      if (employee.deletedAt !== null) {
+        throw new NotFoundException(
+          `Karyawan dengan ID '${id}' tidak ditemukan`,
+        );
+      }
     }
 
-    // 2. Role: MANAGER -> Hanya dapat mengakses karyawan di departemen yang sama
+    // 2. Role: MANAGER -> Hanya dapat mengakses karyawan aktif di departemen yang sama
     if (currentUser.role === UserRole.MANAGER) {
       if (!currentUser.employeeId) {
         throw new ForbiddenException(
           'Akun Manager tidak terhubung dengan data karyawan',
+        );
+      }
+
+      if (employee.deletedAt !== null) {
+        throw new NotFoundException(
+          `Karyawan dengan ID '${id}' tidak ditemukan`,
         );
       }
 
@@ -212,7 +223,7 @@ export class EmployeeService {
       }
     }
 
-    // 3. Role-based view mapping
+    // 3. HR_ADMIN dapat melihat data karyawan ACTIVE, INACTIVE, maupun TERMINATED
     return this.mapEmployeeForUser(employee, currentUser);
   }
 

@@ -361,20 +361,60 @@ describe('EmployeeService', () => {
   });
 
   describe('findById()', () => {
-    it('10. HR_ADMIN: berhasil melihat karyawan manapun dengan baseSalary lengkap', async () => {
-      employeeRepository.findById = jest.fn().mockResolvedValue(mockEmployee);
+    it('10. HR_ADMIN: berhasil melihat karyawan ACTIVE dengan baseSalary lengkap', async () => {
+      employeeRepository.findByIdIncludingDeleted = jest
+        .fn()
+        .mockResolvedValue(mockEmployee);
 
       const result = await employeeService.findById('emp-uuid-1', hrAdminUser);
 
       expect(result.id).toBe('emp-uuid-1');
+      expect(result.status).toBe(EmployeeStatus.ACTIVE);
       expect((result as any).baseSalary).toBeDefined();
     });
 
-    it('11. MANAGER: berhasil melihat anggota tim di departemen yang sama, TAPI baseSalary di-strip', async () => {
+    it('10a. HR_ADMIN: berhasil melihat karyawan INACTIVE dengan deletedAt terisi dan TIDAK 404', async () => {
+      const inactiveEmployee = {
+        ...mockEmployee,
+        status: EmployeeStatus.INACTIVE,
+        deletedAt: new Date('2026-08-20T10:00:00Z'),
+      };
+      employeeRepository.findByIdIncludingDeleted = jest
+        .fn()
+        .mockResolvedValue(inactiveEmployee);
+
+      const result = await employeeService.findById('emp-uuid-1', hrAdminUser);
+
+      expect(result.id).toBe('emp-uuid-1');
+      expect(result.status).toBe(EmployeeStatus.INACTIVE);
+      expect(result.deletedAt).toBeDefined();
+      expect((result as any).baseSalary).toBeDefined();
+    });
+
+    it('10b. HR_ADMIN: berhasil melihat karyawan TERMINATED dengan deletedAt terisi dan TIDAK 404', async () => {
+      const terminatedEmployee = {
+        ...mockEmployee,
+        status: EmployeeStatus.TERMINATED,
+        deletedAt: new Date('2026-08-25T10:00:00Z'),
+      };
+      employeeRepository.findByIdIncludingDeleted = jest
+        .fn()
+        .mockResolvedValue(terminatedEmployee);
+
+      const result = await employeeService.findById('emp-uuid-1', hrAdminUser);
+
+      expect(result.id).toBe('emp-uuid-1');
+      expect(result.status).toBe(EmployeeStatus.TERMINATED);
+      expect(result.deletedAt).toBeDefined();
+    });
+
+    it('11. MANAGER: berhasil melihat anggota tim aktif di departemen yang sama, TAPI baseSalary di-strip', async () => {
+      employeeRepository.findByIdIncludingDeleted = jest
+        .fn()
+        .mockResolvedValue(mockEmployee); // target employee (ACTIVE)
       employeeRepository.findById = jest
         .fn()
-        .mockResolvedValueOnce(mockEmployee) // target employee
-        .mockResolvedValueOnce(managerEmployee); // manager employee
+        .mockResolvedValue(managerEmployee); // manager employee
 
       const result = await employeeService.findById('emp-uuid-1', managerUser);
 
@@ -382,11 +422,28 @@ describe('EmployeeService', () => {
       expect((result as any).baseSalary).toBeUndefined();
     });
 
+    it('11a. MANAGER: ditolak (NotFoundException) saat mencoba melihat anggota tim yang sudah soft-deleted (INACTIVE/TERMINATED)', async () => {
+      const softDeletedEmployee = {
+        ...mockEmployee,
+        status: EmployeeStatus.INACTIVE,
+        deletedAt: new Date(),
+      };
+      employeeRepository.findByIdIncludingDeleted = jest
+        .fn()
+        .mockResolvedValue(softDeletedEmployee);
+
+      await expect(
+        employeeService.findById('emp-uuid-1', managerUser),
+      ).rejects.toThrow(NotFoundException);
+    });
+
     it('12. MANAGER: berhasil melihat profil miliknya sendiri dengan baseSalary utuh', async () => {
+      employeeRepository.findByIdIncludingDeleted = jest
+        .fn()
+        .mockResolvedValue(managerEmployee); // target employee (self)
       employeeRepository.findById = jest
         .fn()
-        .mockResolvedValueOnce(managerEmployee) // target employee (self)
-        .mockResolvedValueOnce(managerEmployee); // manager employee
+        .mockResolvedValue(managerEmployee); // manager employee
 
       const result = await employeeService.findById('emp-manager-uuid', managerUser);
 
@@ -401,10 +458,12 @@ describe('EmployeeService', () => {
         departmentId: 'dept-hr-uuid',
       };
 
+      employeeRepository.findByIdIncludingDeleted = jest
+        .fn()
+        .mockResolvedValue(otherDeptEmployee); // target employee in HR
       employeeRepository.findById = jest
         .fn()
-        .mockResolvedValueOnce(otherDeptEmployee) // target employee in HR
-        .mockResolvedValueOnce(managerEmployee); // manager in ENG
+        .mockResolvedValue(managerEmployee); // manager in ENG
 
       await expect(
         employeeService.findById('emp-hr-uuid', managerUser),
@@ -412,7 +471,9 @@ describe('EmployeeService', () => {
     });
 
     it('14. EMPLOYEE: berhasil melihat profil sendiri dengan baseSalary utuh', async () => {
-      employeeRepository.findById = jest.fn().mockResolvedValue(mockEmployee);
+      employeeRepository.findByIdIncludingDeleted = jest
+        .fn()
+        .mockResolvedValue(mockEmployee);
 
       const result = await employeeService.findById('emp-uuid-1', employeeUser);
 
@@ -421,15 +482,34 @@ describe('EmployeeService', () => {
     });
 
     it('15. EMPLOYEE: ditolak (ForbiddenException) saat mencoba melihat profil orang lain', async () => {
-      employeeRepository.findById = jest.fn().mockResolvedValue(mockEmployee);
+      employeeRepository.findByIdIncludingDeleted = jest
+        .fn()
+        .mockResolvedValue(mockEmployee);
 
       await expect(
         employeeService.findById('emp-other-uuid', employeeUser),
       ).rejects.toThrow(ForbiddenException);
     });
 
-    it('16. Karyawan tidak ditemukan melempar NotFoundException', async () => {
-      employeeRepository.findById = jest.fn().mockResolvedValue(null);
+    it('15a. EMPLOYEE: ditolak (NotFoundException) jika profil sendiri sudah di-soft-delete', async () => {
+      const deletedSelf = {
+        ...mockEmployee,
+        status: EmployeeStatus.INACTIVE,
+        deletedAt: new Date(),
+      };
+      employeeRepository.findByIdIncludingDeleted = jest
+        .fn()
+        .mockResolvedValue(deletedSelf);
+
+      await expect(
+        employeeService.findById('emp-uuid-1', employeeUser),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('16. Karyawan tidak ditemukan melempar NotFoundException (404)', async () => {
+      employeeRepository.findByIdIncludingDeleted = jest
+        .fn()
+        .mockResolvedValue(null);
 
       await expect(
         employeeService.findById('non-existent-id', hrAdminUser),
