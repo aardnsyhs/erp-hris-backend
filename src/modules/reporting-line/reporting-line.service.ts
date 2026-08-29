@@ -53,22 +53,18 @@ export class ReportingLineService {
 
     const isPrimary = dto.isPrimary !== undefined ? dto.isPrimary : true;
 
-    // 1. Auto-close previous primary reporting line
-    if (isPrimary) {
-      await this.repository.closeActivePrimary(
-        employeeId,
-        effectiveFromDate,
-      );
-    }
-
-    // 2. Create new reporting line
-    const created = await this.repository.create({
+    // 1. Eksekusi transaksi atomik: auto-close primary lama + create line baru
+    const created = await this.repository.createWithAutoCloseTransaction(
       employeeId,
-      managerId: dto.managerId,
-      effectiveFrom: effectiveFromDate,
-      effectiveTo: null,
+      {
+        employeeId,
+        managerId: dto.managerId,
+        effectiveFrom: effectiveFromDate,
+        effectiveTo: null,
+        isPrimary,
+      },
       isPrimary,
-    });
+    );
 
     const response = this.mapToResponse(created);
 

@@ -114,8 +114,7 @@ describe('PositionAssignmentService', () => {
   beforeEach(async () => {
     repository = {
       findActiveByEmployeeId: jest.fn(),
-      closeActiveAssignment: jest.fn(),
-      create: jest.fn(),
+      createAssignmentWithMovementTransaction: jest.fn(),
       findHistoryByEmployeeId: jest.fn(),
       findEmployeeById: jest.fn(),
       findPositionById: jest.fn(),
@@ -155,13 +154,12 @@ describe('PositionAssignmentService', () => {
   });
 
   describe('create()', () => {
-    it('1. Sukses assign posisi baru: auto-close penugasan lama & auto-create movement history', async () => {
+    it('1. Sukses assign posisi baru: mengeksekusi transaksi atomik (auto-close & create movement history)', async () => {
       repository.findEmployeeById.mockResolvedValue(mockEmployee as any);
       repository.findPositionById.mockResolvedValue(mockPosition as any);
       repository.findDepartmentById.mockResolvedValue(mockDepartment as any);
       repository.findActiveByEmployeeId.mockResolvedValue(mockActiveAssignment as any);
-      repository.closeActiveAssignment.mockResolvedValue({ count: 1 } as any);
-      repository.create.mockResolvedValue(mockNewAssignment as any);
+      repository.createAssignmentWithMovementTransaction.mockResolvedValue(mockNewAssignment as any);
 
       const dto = {
         positionId: 'pos-2',
@@ -173,27 +171,30 @@ describe('PositionAssignmentService', () => {
 
       const result = await service.create('emp-1', dto, hrAdminUser);
 
-      // Auto-close verification
-      expect(repository.closeActiveAssignment).toHaveBeenCalledWith(
-        'emp-1',
-        new Date('2026-06-01'),
-      );
-
-      // Movement history auto-creation verification
-      expect(movementHistoryService.recordMovement).toHaveBeenCalledWith(
-        expect.objectContaining({
+      // Atomic transaction invocation check
+      expect(
+        repository.createAssignmentWithMovementTransaction,
+      ).toHaveBeenCalledWith({
+        employeeId: 'emp-1',
+        assignmentData: expect.objectContaining({
           employeeId: 'emp-1',
+          positionId: 'pos-2',
+          departmentId: 'dept-1',
+          effectiveFrom: new Date('2026-06-01'),
+          effectiveTo: null,
+          assignmentType: AssignmentType.PROMOTION,
+        }),
+        movementData: expect.objectContaining({
           movementType: MovementType.PROMOTION,
           fromPositionId: 'pos-1',
           toPositionId: 'pos-2',
           fromDepartmentId: 'dept-1',
           toDepartmentId: 'dept-1',
           effectiveDate: new Date('2026-06-01'),
-          performedById: 'user-admin',
         }),
-      );
+      });
 
-      // Audit log verification
+      // Non-blocking audit log record
       expect(auditLogService.record).toHaveBeenCalledWith(
         expect.objectContaining({
           action: 'CREATE_POSITION_ASSIGNMENT',
@@ -205,7 +206,29 @@ describe('PositionAssignmentService', () => {
       expect(result.id).toBe('assign-2');
     });
 
-    it('2. Gagal jika posisi sedang tidak aktif (isActive=false) -> BadRequestException', async () => {
+    it('2. Gagal jika transaksi repository melempar error (rollback)', async () => {
+      repository.findEmployeeById.mockResolvedValue(mockEmployee as any);
+      repository.findPositionById.mockResolvedValue(mockPosition as any);
+      repository.findDepartmentById.mockResolvedValue(mockDepartment as any);
+      repository.findActiveByEmployeeId.mockResolvedValue(mockActiveAssignment as any);
+      repository.createAssignmentWithMovementTransaction.mockRejectedValue(
+        new Error('Transaction failed and rolled back'),
+      );
+
+      const dto = {
+        positionId: 'pos-2',
+        departmentId: 'dept-1',
+        effectiveFrom: '2026-06-01',
+        assignmentType: AssignmentType.PROMOTION,
+      };
+
+      await expect(service.create('emp-1', dto, hrAdminUser)).rejects.toThrow(
+        'Transaction failed and rolled back',
+      );
+      expect(auditLogService.record).not.toHaveBeenCalled();
+    });
+
+    it('3. Gagal jika posisi sedang tidak aktif (isActive=false) -> BadRequestException', async () => {
       repository.findEmployeeById.mockResolvedValue(mockEmployee as any);
       repository.findPositionById.mockResolvedValue(mockInactivePosition as any);
 
@@ -223,7 +246,7 @@ describe('PositionAssignmentService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('3. Gagal jika employee tidak ditemukan -> NotFoundException', async () => {
+    it('4. Gagal jika employee tidak ditemukan -> NotFoundException', async () => {
       repository.findEmployeeById.mockResolvedValue(null);
 
       await expect(
@@ -242,7 +265,7 @@ describe('PositionAssignmentService', () => {
   });
 
   describe('findActiveByEmployeeId() and findHistoryByEmployeeId()', () => {
-    it('4. Sukses mengambil penugasan aktif untuk diri sendiri (EMPLOYEE)', async () => {
+    it('5. Sukses mengambil penugasan aktif untuk diri sendiri (EMPLOYEE)', async () => {
       repository.findEmployeeById.mockResolvedValue(mockEmployee as any);
       repository.findActiveByEmployeeId.mockResolvedValue(mockNewAssignment as any);
 
@@ -250,13 +273,13 @@ describe('PositionAssignmentService', () => {
       expect(result?.positionId).toBe('pos-2');
     });
 
-    it('5. Gagal jika EMPLOYEE melihat penugasan karyawan lain -> ForbiddenException', async () => {
+    it('6. Gagal jika EMPLOYEE melihat penugasan karyawan lain -> ForbiddenException', async () => {
       await expect(
         service.findActiveByEmployeeId('emp-1', otherEmployeeUser),
       ).rejects.toThrow(ForbiddenException);
     });
 
-    it('6. MANAGER sukses melihat history penugasan karyawan satu departemen', async () => {
+    it('7. MANAGER sukses melihat history penugasan karyawan satu departemen', async () => {
       repository.findEmployeeById.mockImplementation(async (id) => {
         if (id === 'emp-1') return mockEmployee as any;
         if (id === 'emp-mgr-1') return { id: 'emp-mgr-1', departmentId: 'dept-1' } as any;
@@ -268,7 +291,7 @@ describe('PositionAssignmentService', () => {
       expect(result.data).toHaveLength(1);
     });
 
-    it('7. MANAGER gagal melihat penugasan karyawan departemen berbeda -> ForbiddenException', async () => {
+    it('8. MANAGER gagal melihat penugasan karyawan departemen berbeda -> ForbiddenException', async () => {
       repository.findEmployeeById.mockImplementation(async (id) => {
         if (id === 'emp-1') return mockEmployee as any;
         if (id === 'emp-mgr-2') return { id: 'emp-mgr-2', departmentId: 'dept-2' } as any;

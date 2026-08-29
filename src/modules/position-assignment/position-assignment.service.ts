@@ -65,48 +65,35 @@ export class PositionAssignmentService {
     const currentActive =
       await this.repository.findActiveByEmployeeId(employeeId);
 
-    // 1. Auto-close previous active assignment
-    if (currentActive) {
-      await this.repository.closeActiveAssignment(
-        employeeId,
-        effectiveFromDate,
-      );
-    }
-
-    // 2. Buat assignment baru
-    const created = await this.repository.create({
-      employeeId,
-      positionId: dto.positionId,
-      departmentId: dto.departmentId,
-      effectiveFrom: effectiveFromDate,
-      effectiveTo: null,
-      assignmentType: dto.assignmentType,
-      notes: dto.notes?.trim() || null,
-      assignedById: currentUser.userId,
-    });
-
-    // 3. Otomatis catat entri EmployeeMovementHistory
     const movementType = this.mapAssignmentToMovementType(dto.assignmentType);
-    try {
-      await this.movementHistoryService.recordMovement({
-        employeeId,
-        movementType,
-        fromPositionId: currentActive?.positionId || null,
-        toPositionId: dto.positionId,
-        fromDepartmentId: currentActive?.departmentId || null,
-        toDepartmentId: dto.departmentId,
-        effectiveDate: effectiveFromDate,
-        reason: dto.notes || `Penugasan posisi ${dto.assignmentType}`,
-        performedById: currentUser.userId,
-      });
-    } catch (err: any) {
-      this.logger.error(
-        'Gagal mencatat movement history untuk assignment',
-        err?.stack,
-      );
-    }
 
-    // 4. Audit Logging
+    // 1. Eksekusi transaksi atomik: close previous active + create new assignment + create movement history
+    const created =
+      await this.repository.createAssignmentWithMovementTransaction({
+        employeeId,
+        assignmentData: {
+          employeeId,
+          positionId: dto.positionId,
+          departmentId: dto.departmentId,
+          effectiveFrom: effectiveFromDate,
+          effectiveTo: null,
+          assignmentType: dto.assignmentType,
+          notes: dto.notes?.trim() || null,
+          assignedById: currentUser.userId,
+        },
+        movementData: {
+          movementType,
+          fromPositionId: currentActive?.positionId || null,
+          toPositionId: dto.positionId,
+          fromDepartmentId: currentActive?.departmentId || null,
+          toDepartmentId: dto.departmentId,
+          effectiveDate: effectiveFromDate,
+          reason: dto.notes || `Penugasan posisi ${dto.assignmentType}`,
+          performedById: currentUser.userId,
+        },
+      });
+
+    // 2. Audit Logging (non-blocking post-commit)
     const response = this.mapToResponse(created);
     try {
       await this.auditLogService.record({

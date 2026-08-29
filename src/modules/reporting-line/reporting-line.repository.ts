@@ -19,34 +19,37 @@ export class ReportingLineRepository {
     });
   }
 
-  async closeActivePrimary(
+  /**
+   * Atomic interactive transaction:
+   * 1. If isPrimary is true, close existing active primary reporting line with effectiveTo = newEffectiveFrom.
+   * 2. Create new reporting line.
+   * If any step fails, entire transaction rolls back.
+   */
+  async createWithAutoCloseTransaction(
     employeeId: string,
-    effectiveTo: Date,
-    tx?: Prisma.TransactionClient,
-  ) {
-    const client = tx || this.prisma;
-    return client.employeeReportingLine.updateMany({
-      where: {
-        employeeId,
-        isPrimary: true,
-        effectiveTo: null,
-      },
-      data: {
-        effectiveTo,
-      },
-    });
-  }
-
-  async create(
     data: Prisma.EmployeeReportingLineUncheckedCreateInput,
-    tx?: Prisma.TransactionClient,
+    isPrimary: boolean,
   ) {
-    const client = tx || this.prisma;
-    return client.employeeReportingLine.create({
-      data,
-      include: {
-        manager: true,
-      },
+    return this.prisma.$transaction(async (tx) => {
+      if (isPrimary) {
+        await tx.employeeReportingLine.updateMany({
+          where: {
+            employeeId,
+            isPrimary: true,
+            effectiveTo: null,
+          },
+          data: {
+            effectiveTo: data.effectiveFrom as Date,
+          },
+        });
+      }
+
+      return tx.employeeReportingLine.create({
+        data,
+        include: {
+          manager: true,
+        },
+      });
     });
   }
 

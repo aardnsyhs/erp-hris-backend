@@ -83,8 +83,7 @@ describe('ReportingLineService', () => {
   beforeEach(async () => {
     repository = {
       findActivePrimaryByEmployeeId: jest.fn(),
-      closeActivePrimary: jest.fn(),
-      create: jest.fn(),
+      createWithAutoCloseTransaction: jest.fn(),
       findHistoryByEmployeeId: jest.fn(),
       findEmployeeById: jest.fn(),
     } as any;
@@ -113,14 +112,13 @@ describe('ReportingLineService', () => {
   });
 
   describe('create()', () => {
-    it('1. Sukses membuat reporting line baru: auto-close primary line lama & log audit', async () => {
+    it('1. Sukses membuat reporting line baru: mengeksekusi transaksi atomik auto-close primary line lama', async () => {
       repository.findEmployeeById.mockImplementation(async (id) => {
         if (id === 'emp-1') return mockSubordinate as any;
         if (id === 'emp-mgr-1') return mockManager as any;
         return null;
       });
-      repository.closeActivePrimary.mockResolvedValue({ count: 1 } as any);
-      repository.create.mockResolvedValue(mockReportingLine as any);
+      repository.createWithAutoCloseTransaction.mockResolvedValue(mockReportingLine as any);
 
       const dto = {
         managerId: 'emp-mgr-1',
@@ -130,9 +128,15 @@ describe('ReportingLineService', () => {
 
       const result = await service.create('emp-1', dto, hrAdminUser);
 
-      expect(repository.closeActivePrimary).toHaveBeenCalledWith(
+      expect(repository.createWithAutoCloseTransaction).toHaveBeenCalledWith(
         'emp-1',
-        new Date('2026-01-01'),
+        expect.objectContaining({
+          employeeId: 'emp-1',
+          managerId: 'emp-mgr-1',
+          effectiveFrom: new Date('2026-01-01'),
+          isPrimary: true,
+        }),
+        true,
       );
       expect(auditLogService.record).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -171,10 +175,32 @@ describe('ReportingLineService', () => {
         ),
       ).rejects.toThrow(NotFoundException);
     });
+
+    it('4. Gagal jika transaksi repository melempar error (rollback)', async () => {
+      repository.findEmployeeById.mockImplementation(async (id) => {
+        if (id === 'emp-1') return mockSubordinate as any;
+        if (id === 'emp-mgr-1') return mockManager as any;
+        return null;
+      });
+      repository.createWithAutoCloseTransaction.mockRejectedValue(
+        new Error('Transaction aborted'),
+      );
+
+      const dto = {
+        managerId: 'emp-mgr-1',
+        effectiveFrom: '2026-01-01',
+        isPrimary: true,
+      };
+
+      await expect(service.create('emp-1', dto, hrAdminUser)).rejects.toThrow(
+        'Transaction aborted',
+      );
+      expect(auditLogService.record).not.toHaveBeenCalled();
+    });
   });
 
   describe('findActiveByEmployeeId() and findHistoryByEmployeeId()', () => {
-    it('4. Sukses mengambil reporting line aktif untuk diri sendiri (EMPLOYEE)', async () => {
+    it('5. Sukses mengambil reporting line aktif untuk diri sendiri (EMPLOYEE)', async () => {
       repository.findEmployeeById.mockResolvedValue(mockSubordinate as any);
       repository.findActivePrimaryByEmployeeId.mockResolvedValue(mockReportingLine as any);
 
@@ -182,13 +208,13 @@ describe('ReportingLineService', () => {
       expect(result?.managerId).toBe('emp-mgr-1');
     });
 
-    it('5. Gagal jika EMPLOYEE melihat reporting line karyawan lain -> ForbiddenException', async () => {
+    it('6. Gagal jika EMPLOYEE melihat reporting line karyawan lain -> ForbiddenException', async () => {
       await expect(
         service.findActiveByEmployeeId('emp-1', otherEmployeeUser),
       ).rejects.toThrow(ForbiddenException);
     });
 
-    it('6. MANAGER sukses melihat history reporting line karyawan di departemennya', async () => {
+    it('7. MANAGER sukses melihat history reporting line karyawan di departemennya', async () => {
       repository.findEmployeeById.mockImplementation(async (id) => {
         if (id === 'emp-1') return mockSubordinate as any;
         if (id === 'emp-mgr-1') return mockManager as any;
@@ -200,7 +226,7 @@ describe('ReportingLineService', () => {
       expect(result.data).toHaveLength(1);
     });
 
-    it('7. MANAGER gagal melihat reporting line karyawan di departemen berbeda -> ForbiddenException', async () => {
+    it('8. MANAGER gagal melihat reporting line karyawan di departemen berbeda -> ForbiddenException', async () => {
       repository.findEmployeeById.mockImplementation(async (id) => {
         if (id === 'emp-1') return mockSubordinate as any;
         if (id === 'emp-mgr-2') return { id: 'emp-mgr-2', departmentId: 'dept-2' } as any;

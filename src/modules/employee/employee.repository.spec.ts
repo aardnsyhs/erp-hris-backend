@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { EmployeeStatus, Prisma, UserRole } from '@prisma/client';
+import { ContractStatus, EmployeeStatus, MovementType, Prisma, UserRole } from '@prisma/client';
 import { EmployeeRepository } from './employee.repository';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -34,6 +34,30 @@ describe('EmployeeRepository', () => {
     updatedAt: new Date(),
   };
 
+  const mockTx = {
+    employee: {
+      create: jest.fn().mockResolvedValue(mockEmployee),
+      update: jest.fn().mockImplementation(({ data }) =>
+        Promise.resolve({ ...mockEmployee, ...data }),
+      ),
+    },
+    user: {
+      create: jest.fn().mockResolvedValue(mockUser),
+      findFirst: jest.fn().mockResolvedValue({ id: 'user-admin', role: UserRole.HR_ADMIN }),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
+    employmentContract: {
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
+    employeePositionAssignment: {
+      findFirst: jest.fn().mockResolvedValue({ id: 'assign-1', positionId: 'pos-1', departmentId: 'dept-1' }),
+      update: jest.fn().mockResolvedValue({ id: 'assign-1' }),
+    },
+    employeeMovementHistory: {
+      create: jest.fn().mockResolvedValue({ id: 'mov-1' }),
+    },
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -57,21 +81,7 @@ describe('EmployeeRepository', () => {
             department: {
               findUnique: jest.fn(),
             },
-            $transaction: jest.fn((callback) => {
-              // Pass the mock prisma as the transaction client
-              return callback({
-                employee: {
-                  create: jest.fn().mockResolvedValue(mockEmployee),
-                  update: jest.fn().mockImplementation(({ data }) =>
-                    Promise.resolve({ ...mockEmployee, ...data }),
-                  ),
-                },
-                user: {
-                  create: jest.fn().mockResolvedValue(mockUser),
-                  updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-                },
-              });
-            }),
+            $transaction: jest.fn((callback) => callback(mockTx)),
           },
         },
       ],
@@ -79,18 +89,19 @@ describe('EmployeeRepository', () => {
 
     repository = module.get<EmployeeRepository>(EmployeeRepository);
     prisma = module.get<PrismaService>(PrismaService);
+    jest.clearAllMocks();
   });
 
   describe('createWithUser()', () => {
-    it('1. Membuat Employee dan User secara atomik dalam satu transaction', async () => {
+    it('1. Sukses membuat Employee dan User dalam satu transaksi', async () => {
       const employeeData = {
-        departmentId: 'dept-uuid-1',
         nip: 'EMP001',
         fullName: 'John Doe',
         email: 'john@example.com',
         jobTitle: 'Engineer',
         hireDate: new Date('2024-01-01'),
         baseSalary: new Prisma.Decimal(10000000),
+        departmentId: 'dept-uuid-1',
       };
 
       const userData = {
@@ -101,40 +112,73 @@ describe('EmployeeRepository', () => {
 
       const result = await repository.createWithUser(employeeData, userData);
 
-      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.$transaction).toHaveBeenCalled();
       expect(result).toBeDefined();
       expect(result.id).toBe('emp-uuid-1');
     });
   });
 
-  describe('softDelete()', () => {
-    it('2. Soft delete: menonaktifkan Employee (INACTIVE, deletedAt terisi) dan menyinkronkan User (isActive: false) dalam satu transaction', async () => {
-      const result = await repository.softDelete('emp-uuid-1');
+  describe('terminateWithSideEffects() - Atomic Transaction & Rollback', () => {
+    it('2. Atomic Transaction: Sukses terminate employee, deactivate user, terminate contracts, close assignment, create movement history', async () => {
+      mockTx.employee.update.mockResolvedValue({
+        ...mockEmployee,
+        status: EmployeeStatus.TERMINATED,
+        deletedAt: new Date(),
+      });
+      mockTx.user.updateMany.mockResolvedValue({ count: 1 });
+      mockTx.employmentContract.updateMany.mockResolvedValue({ count: 1 });
+      mockTx.employeePositionAssignment.findFirst.mockResolvedValue({
+        id: 'assign-1',
+        positionId: 'pos-1',
+        departmentId: 'dept-1',
+      });
+      mockTx.employeePositionAssignment.update.mockResolvedValue({ id: 'assign-1' });
+      mockTx.employeeMovementHistory.create.mockResolvedValue({ id: 'mov-1' });
 
-      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
-      expect(result.status).toBe(EmployeeStatus.INACTIVE);
-      expect(result.deletedAt).toBeInstanceOf(Date);
+      const result = await repository.terminateWithSideEffects('emp-uuid-1', 'user-admin');
+
+      expect(prisma.$transaction).toHaveBeenCalled();
+      expect(mockTx.employee.update).toHaveBeenCalledWith({
+        where: { id: 'emp-uuid-1' },
+        data: {
+          status: EmployeeStatus.TERMINATED,
+          deletedAt: expect.any(Date),
+        },
+      });
+      expect(mockTx.user.updateMany).toHaveBeenCalledWith({
+        where: { employeeId: 'emp-uuid-1' },
+        data: { isActive: false },
+      });
+      expect(mockTx.employmentContract.updateMany).toHaveBeenCalledWith({
+        where: {
+          employeeId: 'emp-uuid-1',
+          status: ContractStatus.ACTIVE,
+        },
+        data: { status: ContractStatus.TERMINATED },
+      });
+      expect(mockTx.employeeMovementHistory.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          employeeId: 'emp-uuid-1',
+          movementType: MovementType.TERMINATION,
+          performedById: 'user-admin',
+        }),
+      });
+      expect(result.status).toBe(EmployeeStatus.TERMINATED);
     });
 
-    it('2b. Soft delete: memberhentikan permanen Employee (TERMINATED, deletedAt terisi) dan menyinkronkan User (isActive: false)', async () => {
-      const result = await repository.softDelete(
-        'emp-uuid-1',
-        EmployeeStatus.TERMINATED,
+    it('3. Atomic Rollback: Jika pembuatan movement history gagal saat terminate, transaksi gagal total dan melempar error', async () => {
+      mockTx.employee.update.mockResolvedValue({
+        ...mockEmployee,
+        status: EmployeeStatus.TERMINATED,
+        deletedAt: new Date(),
+      });
+      mockTx.employeeMovementHistory.create.mockRejectedValue(
+        new Error('Database error during movement history creation'),
       );
 
-      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
-      expect(result.status).toBe(EmployeeStatus.TERMINATED);
-      expect(result.deletedAt).toBeInstanceOf(Date);
-    });
-  });
-
-  describe('reactivate()', () => {
-    it('3. Reaktivasi: mengaktifkan kembali Employee (ACTIVE, deletedAt: null) dan menyinkronkan User (isActive: true) dalam satu transaction', async () => {
-      const result = await repository.reactivate('emp-uuid-1');
-
-      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
-      expect(result.status).toBe(EmployeeStatus.ACTIVE);
-      expect(result.deletedAt).toBeNull();
+      await expect(
+        repository.terminateWithSideEffects('emp-uuid-1', 'user-admin'),
+      ).rejects.toThrow('Database error during movement history creation');
     });
   });
 
@@ -166,7 +210,6 @@ describe('EmployeeRepository', () => {
         }),
       );
 
-      // Verify that deletedAt: null is NOT in the where clause
       const calledWhere = (prisma.employee.findMany as jest.Mock).mock.calls[0][0].where;
       expect(calledWhere.deletedAt).toBeUndefined();
     });

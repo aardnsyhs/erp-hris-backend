@@ -83,22 +83,8 @@ export class ContractService {
 
     const status = dto.status || ContractStatus.ACTIVE;
 
-    // No-overlap validation untuk kontrak ACTIVE
-    if (status === ContractStatus.ACTIVE) {
-      const overlapping =
-        await this.repository.findOverlappingActiveContract(
-          employeeId,
-          startDate,
-          endDate,
-        );
-      if (overlapping) {
-        throw new ConflictException(
-          `Terdapat kontrak aktif '${overlapping.contractNumber}' yang overlap pada rentang tanggal tersebut`,
-        );
-      }
-    }
-
-    const created = await this.repository.create({
+    // Eksekusi transaksi atomik dengan pemeriksaan overlap terisolasi
+    const created = await this.repository.createWithOverlapCheckTransaction({
       employeeId,
       contractType: dto.contractType,
       contractNumber: dto.contractNumber.trim(),
@@ -155,11 +141,13 @@ export class ContractService {
       );
     }
 
-    const updated = await this.repository.updateStatus(
-      id,
-      dto.status,
-      dto.notes,
-    );
+    const updated =
+      await this.repository.updateStatusWithOverlapCheckTransaction(
+        id,
+        employeeId,
+        dto.status,
+        dto.notes,
+      );
 
     const response = this.mapToResponse(updated);
 

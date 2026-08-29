@@ -78,11 +78,13 @@ describe('ContractService', () => {
   beforeEach(async () => {
     repository = {
       create: jest.fn(),
+      createWithOverlapCheckTransaction: jest.fn(),
       findById: jest.fn(),
       findByContractNumber: jest.fn(),
       findActiveContractsByEmployeeId: jest.fn(),
       findOverlappingActiveContract: jest.fn(),
       updateStatus: jest.fn(),
+      updateStatusWithOverlapCheckTransaction: jest.fn(),
       terminateActiveContractsForEmployee: jest.fn(),
       findManyByEmployeeId: jest.fn(),
       findEmployeeById: jest.fn(),
@@ -113,12 +115,11 @@ describe('ContractService', () => {
   });
 
   describe('create()', () => {
-    it('1. Sukses membuat kontrak baru dan mencatat audit log', async () => {
+    it('1. Sukses membuat kontrak baru via createWithOverlapCheckTransaction dan mencatat audit log', async () => {
       repository.findEmployeeById.mockResolvedValue(mockEmployee as any);
       repository.findByContractNumber.mockResolvedValue(null);
       repository.findDocumentById.mockResolvedValue(mockDocument as any);
-      repository.findOverlappingActiveContract.mockResolvedValue(null);
-      repository.create.mockResolvedValue(mockContract as any);
+      repository.createWithOverlapCheckTransaction.mockResolvedValue(mockContract as any);
 
       const dto = {
         contractType: ContractType.CONTRACT,
@@ -131,7 +132,13 @@ describe('ContractService', () => {
 
       const result = await service.create('emp-1', dto, hrAdminUser);
 
-      expect(repository.findOverlappingActiveContract).toHaveBeenCalled();
+      expect(repository.createWithOverlapCheckTransaction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          employeeId: 'emp-1',
+          contractNumber: 'CTR/2026/001',
+          status: ContractStatus.ACTIVE,
+        }),
+      );
       expect(auditLogService.record).toHaveBeenCalledWith(
         expect.objectContaining({
           action: 'CREATE_CONTRACT',
@@ -177,10 +184,12 @@ describe('ContractService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('4. Gagal jika terdapat kontrak ACTIVE yang overlap -> ConflictException', async () => {
+    it('4. Gagal jika transaksi overlap repository melempar ConflictException (overlap rollback)', async () => {
       repository.findEmployeeById.mockResolvedValue(mockEmployee as any);
       repository.findByContractNumber.mockResolvedValue(null);
-      repository.findOverlappingActiveContract.mockResolvedValue(mockContract as any);
+      repository.createWithOverlapCheckTransaction.mockRejectedValue(
+        new ConflictException('Overlap detected inside transaction'),
+      );
 
       await expect(
         service.create(
@@ -195,14 +204,15 @@ describe('ContractService', () => {
           hrAdminUser,
         ),
       ).rejects.toThrow(ConflictException);
+      expect(auditLogService.record).not.toHaveBeenCalled();
     });
   });
 
-  describe('updateStatus() - Immutable Transition Guard', () => {
-    it('5. Sukses transisi status kontrak ACTIVE -> RENEWED', async () => {
+  describe('updateStatus() - Immutable Transition Guard & Atomic Update', () => {
+    it('5. Sukses transisi status kontrak ACTIVE -> RENEWED via updateStatusWithOverlapCheckTransaction', async () => {
       repository.findById.mockResolvedValue(mockContract as any);
       const updated = { ...mockContract, status: ContractStatus.RENEWED };
-      repository.updateStatus.mockResolvedValue(updated as any);
+      repository.updateStatusWithOverlapCheckTransaction.mockResolvedValue(updated as any);
 
       const result = await service.updateStatus(
         'emp-1',
@@ -211,8 +221,11 @@ describe('ContractService', () => {
         hrAdminUser,
       );
 
-      expect(repository.updateStatus).toHaveBeenCalledWith(
+      expect(
+        repository.updateStatusWithOverlapCheckTransaction,
+      ).toHaveBeenCalledWith(
         'contract-1',
+        'emp-1',
         ContractStatus.RENEWED,
         'Renewed for next year',
       );
