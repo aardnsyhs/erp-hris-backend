@@ -591,9 +591,9 @@ describe('EmployeeService', () => {
   });
 
   describe('terminate()', () => {
-    it('21. Sukses memberhentikan permanen karyawan (softDelete dengan status TERMINATED)', async () => {
+    it('21. Sukses memberhentikan permanen karyawan dan menjalankan side-effects (terminateWithSideEffects)', async () => {
       employeeRepository.findById = jest.fn().mockResolvedValue(mockEmployee);
-      employeeRepository.softDelete = jest.fn().mockResolvedValue({
+      employeeRepository.terminateWithSideEffects = jest.fn().mockResolvedValue({
         ...mockEmployee,
         status: EmployeeStatus.TERMINATED,
         deletedAt: new Date(),
@@ -604,19 +604,19 @@ describe('EmployeeService', () => {
       expect(result).toEqual({
         message: 'Karyawan berhasil diberhentikan secara permanen (TERMINATED)',
       });
-      expect(employeeRepository.softDelete).toHaveBeenCalledWith(
+      expect(employeeRepository.terminateWithSideEffects).toHaveBeenCalledWith(
         'emp-uuid-1',
-        EmployeeStatus.TERMINATED,
       );
     });
 
     it('22. Gagal: terminate karyawan yang tidak ditemukan melempar NotFoundException', async () => {
       employeeRepository.findById = jest.fn().mockResolvedValue(null);
+      employeeRepository.terminateWithSideEffects = jest.fn();
 
       await expect(
         employeeService.terminate('non-existent-id'),
       ).rejects.toThrow(NotFoundException);
-      expect(employeeRepository.softDelete).not.toHaveBeenCalled();
+      expect(employeeRepository.terminateWithSideEffects).not.toHaveBeenCalled();
     });
   });
 
@@ -775,7 +775,9 @@ describe('EmployeeService', () => {
 
     it('should record TERMINATE audit log on terminate()', async () => {
       employeeRepository.findById = jest.fn().mockResolvedValue(mockEmployee);
-      employeeRepository.softDelete = jest.fn().mockResolvedValue(mockEmployee);
+      employeeRepository.terminateWithSideEffects = jest
+        .fn()
+        .mockResolvedValue(mockEmployee);
 
       await employeeService.terminate('emp-uuid-1');
 

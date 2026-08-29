@@ -60,6 +60,38 @@ enum ScanStatus {
   QUARANTINED
 }
 
+enum ContractType {
+  PERMANENT
+  CONTRACT
+  PROBATION
+  INTERNSHIP
+}
+
+enum ContractStatus {
+  ACTIVE
+  EXPIRED
+  TERMINATED
+  RENEWED
+}
+
+enum AssignmentType {
+  INITIAL
+  PROMOTION
+  TRANSFER
+  DEMOTION
+  REORGANIZATION
+}
+
+enum MovementType {
+  HIRE
+  PROMOTION
+  TRANSFER
+  DEMOTION
+  REORGANIZATION
+  TERMINATION
+  REACTIVATION
+}
+
 model User {
   id           String   @id @default(uuid())
   email        String   @unique
@@ -70,10 +102,12 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  employee          Employee?          @relation(fields: [employeeId], references: [id], onDelete: SetNull)
-  refreshTokens     RefreshToken[]
-  auditLogs         AuditLog[]         @relation("UserAuditLogs")
-  uploadedDocuments EmployeeDocument[] @relation("UserUploadedDocuments")
+  employee            Employee?                    @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  refreshTokens       RefreshToken[]
+  auditLogs           AuditLog[]                   @relation("UserAuditLogs")
+  uploadedDocuments   EmployeeDocument[]           @relation("UserUploadedDocuments")
+  positionAssignments EmployeePositionAssignment[] @relation("UserPositionAssignments")
+  performedMovements  EmployeeMovementHistory[]    @relation("UserPerformedMovements")
 
   @@index([role])
   @@index([isActive])
@@ -102,6 +136,10 @@ model Department {
   updatedAt DateTime   @updatedAt @map("updated_at")
   employees Employee[]
 
+  positionAssignments     EmployeePositionAssignment[]
+  movementFromDepartments EmployeeMovementHistory[]    @relation("MovementFromDepartment")
+  movementToDepartments   EmployeeMovementHistory[]    @relation("MovementToDepartment")
+
   @@map("departments")
 }
 
@@ -120,14 +158,19 @@ model Employee {
   createdAt    DateTime       @default(now()) @map("created_at")
   updatedAt    DateTime       @updatedAt @map("updated_at")
 
-  department        Department                 @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  user              User?
-  attendances       Attendance[]
-  leaveRequests     LeaveRequest[]             @relation("EmployeeLeaveRequests")
-  approvedLeaves    LeaveRequest[]             @relation("ApprovedLeaveRequests")
-  payrolls          Payroll[]
-  emergencyContacts EmployeeEmergencyContact[]
-  documents         EmployeeDocument[]
+  department                Department                   @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  user                      User?
+  attendances               Attendance[]
+  leaveRequests             LeaveRequest[]               @relation("EmployeeLeaveRequests")
+  approvedLeaves            LeaveRequest[]               @relation("ApprovedLeaveRequests")
+  payrolls                  Payroll[]
+  emergencyContacts         EmployeeEmergencyContact[]
+  documents                 EmployeeDocument[]
+  contracts                 EmploymentContract[]
+  positionAssignments       EmployeePositionAssignment[]
+  subordinateReportingLines EmployeeReportingLine[]      @relation("SubordinateReportingLines")
+  managerReportingLines     EmployeeReportingLine[]      @relation("ManagerReportingLines")
+  movementHistories         EmployeeMovementHistory[]
 
   @@index([departmentId])
   @@index([status])
@@ -180,11 +223,11 @@ model Payroll {
   employeeId  String        @map("employee_id")
   periodStart DateTime      @map("period_start") @db.Date
   periodEnd   DateTime      @map("period_end") @db.Date
-  paymentDate DateTime?     @map("payment_date") @db.Date
   basicSalary Decimal       @map("basic_salary") @db.Decimal(15, 2)
   allowances  Decimal       @map("allowances") @db.Decimal(15, 2)
   deductions  Decimal       @map("deductions") @db.Decimal(15, 2)
   netSalary   Decimal       @map("net_salary") @db.Decimal(15, 2)
+  paymentDate DateTime?     @map("payment_date") @db.Date
   status      PayrollStatus @default(DRAFT)
   deletedAt   DateTime?     @map("deleted_at")
   createdAt   DateTime      @default(now()) @map("created_at")
@@ -269,8 +312,9 @@ model EmployeeDocument {
   createdAt     DateTime     @default(now()) @map("created_at")
   updatedAt     DateTime     @updatedAt @map("updated_at")
 
-  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
-  uploadedBy User     @relation("UserUploadedDocuments", fields: [uploadedById], references: [id], onDelete: Restrict)
+  employee   Employee             @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  uploadedBy User                 @relation("UserUploadedDocuments", fields: [uploadedById], references: [id], onDelete: Restrict)
+  contracts  EmploymentContract[]
 
   @@index([employeeId])
   @@index([documentType])
@@ -278,4 +322,112 @@ model EmployeeDocument {
   @@map("employee_documents")
 }
 
+model EmploymentContract {
+  id                  String         @id @default(uuid())
+  employeeId          String         @map("employee_id")
+  contractType        ContractType   @map("contract_type")
+  contractNumber      String         @unique @map("contract_number")
+  startDate           DateTime       @map("start_date") @db.Date
+  endDate             DateTime?      @map("end_date") @db.Date
+  status              ContractStatus @default(ACTIVE)
+  renewalReminderDate DateTime?      @map("renewal_reminder_date") @db.Date
+  notes               String?
+  documentId          String?        @map("document_id")
+  createdAt           DateTime       @default(now()) @map("created_at")
+  updatedAt           DateTime       @updatedAt @map("updated_at")
 
+  employee Employee          @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  document EmployeeDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  @@index([employeeId])
+  @@index([status])
+  @@index([endDate])
+  @@index([renewalReminderDate])
+  @@map("employment_contracts")
+}
+
+model Position {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  title       String
+  description String?
+  level       Int
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  assignments  EmployeePositionAssignment[]
+  movementFrom EmployeeMovementHistory[]    @relation("MovementFromPosition")
+  movementTo   EmployeeMovementHistory[]    @relation("MovementToPosition")
+
+  @@index([isActive])
+  @@index([level])
+  @@map("positions")
+}
+
+model EmployeePositionAssignment {
+  id             String         @id @default(uuid())
+  employeeId     String         @map("employee_id")
+  positionId     String         @map("position_id")
+  departmentId   String         @map("department_id")
+  effectiveFrom  DateTime       @map("effective_from") @db.Date
+  effectiveTo    DateTime?      @map("effective_to") @db.Date
+  assignmentType AssignmentType @map("assignment_type")
+  notes          String?
+  assignedById   String         @map("assigned_by_id")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  employee   Employee   @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  position   Position   @relation(fields: [positionId], references: [id], onDelete: Restrict)
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  assignedBy User       @relation("UserPositionAssignments", fields: [assignedById], references: [id], onDelete: Restrict)
+
+  @@index([employeeId, effectiveFrom])
+  @@index([positionId])
+  @@index([departmentId])
+  @@map("employee_position_assignments")
+}
+
+model EmployeeReportingLine {
+  id            String    @id @default(uuid())
+  employeeId    String    @map("employee_id")
+  managerId     String    @map("manager_id")
+  effectiveFrom DateTime  @map("effective_from") @db.Date
+  effectiveTo   DateTime? @map("effective_to") @db.Date
+  isPrimary     Boolean   @default(true) @map("is_primary")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  subordinate Employee @relation("SubordinateReportingLines", fields: [employeeId], references: [id], onDelete: Restrict)
+  manager     Employee @relation("ManagerReportingLines", fields: [managerId], references: [id], onDelete: Restrict)
+
+  @@index([employeeId, effectiveFrom])
+  @@index([managerId])
+  @@map("employee_reporting_lines")
+}
+
+model EmployeeMovementHistory {
+  id               String       @id @default(uuid())
+  employeeId       String       @map("employee_id")
+  movementType     MovementType @map("movement_type")
+  fromPositionId   String?      @map("from_position_id")
+  toPositionId     String?      @map("to_position_id")
+  fromDepartmentId String?      @map("from_department_id")
+  toDepartmentId   String?      @map("to_department_id")
+  effectiveDate    DateTime     @map("effective_date") @db.Date
+  reason           String?
+  performedById    String       @map("performed_by_id")
+  createdAt        DateTime     @default(now()) @map("created_at")
+
+  employee       Employee    @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  fromPosition   Position?   @relation("MovementFromPosition", fields: [fromPositionId], references: [id], onDelete: SetNull)
+  toPosition     Position?   @relation("MovementToPosition", fields: [toPositionId], references: [id], onDelete: SetNull)
+  fromDepartment Department? @relation("MovementFromDepartment", fields: [fromDepartmentId], references: [id], onDelete: SetNull)
+  toDepartment   Department? @relation("MovementToDepartment", fields: [toDepartmentId], references: [id], onDelete: SetNull)
+  performedBy    User        @relation("UserPerformedMovements", fields: [performedById], references: [id], onDelete: Restrict)
+
+  @@index([employeeId, effectiveDate])
+  @@index([movementType])
+  @@map("employee_movement_histories")
+}

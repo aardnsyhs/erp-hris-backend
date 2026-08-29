@@ -326,7 +326,7 @@ export class EmployeeService {
       throw new NotFoundException(`Karyawan dengan ID '${id}' tidak ditemukan`);
     }
 
-    await this.employeeRepository.softDelete(id, EmployeeStatus.TERMINATED);
+    await this.employeeRepository.terminateWithSideEffects(id);
 
     await this.auditLogService.record({
       action: 'TERMINATE',

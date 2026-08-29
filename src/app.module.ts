@@ -15,6 +15,11 @@ import { WorkScheduleModule } from './modules/work-schedule/work-schedule.module
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { EmergencyContactModule } from './modules/emergency-contact/emergency-contact.module';
 import { EmployeeDocumentModule } from './modules/employee-document/employee-document.module';
+import { MovementHistoryModule } from './modules/movement-history/movement-history.module';
+import { PositionModule } from './modules/position/position.module';
+import { PositionAssignmentModule } from './modules/position-assignment/position-assignment.module';
+import { ReportingLineModule } from './modules/reporting-line/reporting-line.module';
+import { ContractModule } from './modules/contract/contract.module';
 import { StorageModule } from './common/storage/storage.module';
 import { JobModule } from './common/jobs/job.module';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
@@ -45,6 +50,11 @@ import { RolesGuard } from './common/guards/roles.guard';
     EmployeeModule,
     EmergencyContactModule,
     EmployeeDocumentModule,
+    MovementHistoryModule,
+    PositionModule,
+    PositionAssignmentModule,
+    ReportingLineModule,
+    ContractModule,
     AttendanceModule,
     LeaveRequestModule,
     PayrollModule,

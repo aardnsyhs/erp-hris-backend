@@ -1,5 +1,14 @@
 import { Injectable } from '@nestjs/common';
-import { Department, Employee, EmployeeStatus, Prisma, User, UserRole } from '@prisma/client';
+import {
+  ContractStatus,
+  Department,
+  Employee,
+  EmployeeStatus,
+  MovementType,
+  Prisma,
+  User,
+  UserRole,
+} from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
@@ -173,6 +182,70 @@ export class EmployeeRepository {
       await tx.user.updateMany({
         where: { employeeId: id },
         data: { isActive: false },
+      });
+
+      return employee;
+    });
+  }
+
+  async terminateWithSideEffects(
+    id: string,
+    performedById?: string,
+  ): Promise<Employee> {
+    return this.prisma.$transaction(async (tx) => {
+      const employee = await tx.employee.update({
+        where: { id },
+        data: {
+          deletedAt: new Date(),
+          status: EmployeeStatus.TERMINATED,
+        },
+      });
+
+      await tx.user.updateMany({
+        where: { employeeId: id },
+        data: { isActive: false },
+      });
+
+      // 1. Set active employment contracts to TERMINATED
+      await tx.employmentContract.updateMany({
+        where: {
+          employeeId: id,
+          status: ContractStatus.ACTIVE,
+        },
+        data: {
+          status: ContractStatus.TERMINATED,
+        },
+      });
+
+      // 2. Auto-close active position assignment if any
+      const activeAssignment = await tx.employeePositionAssignment.findFirst({
+        where: { employeeId: id, effectiveTo: null },
+      });
+      if (activeAssignment) {
+        await tx.employeePositionAssignment.update({
+          where: { id: activeAssignment.id },
+          data: { effectiveTo: new Date() },
+        });
+      }
+
+      // 3. Find performedById (or fallback to an existing user)
+      let actorId = performedById;
+      if (!actorId) {
+        const user = await tx.user.findFirst({ where: { role: UserRole.HR_ADMIN } });
+        actorId = user?.id || employee.id;
+      }
+
+      // 4. Create EmployeeMovementHistory entry with TERMINATION
+      await tx.employeeMovementHistory.create({
+        data: {
+          employeeId: id,
+          movementType: MovementType.TERMINATION,
+          fromPositionId: activeAssignment?.positionId || null,
+          fromDepartmentId: activeAssignment?.departmentId || employee.departmentId,
+          effectiveDate: new Date(),
+          reason: 'Karyawan diberhentikan secara permanen (TERMINATED)',
+          performedById: actorId,
+        },
       });
 
       return employee;
