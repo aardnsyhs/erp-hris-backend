@@ -11,11 +11,13 @@ import { CreateLeaveRequestDto } from './dto/create-leave-request.dto';
 import { RejectLeaveRequestDto } from './dto/reject-leave-request.dto';
 import { LeaveRequestQueryDto } from './dto/leave-request-query.dto';
 import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
+import { AuditLogService } from '../audit-log/audit-log.service';
 
 @Injectable()
 export class LeaveRequestService {
   constructor(
     private readonly leaveRequestRepository: LeaveRequestRepository,
+    private readonly auditLogService: AuditLogService,
   ) {}
 
   async create(currentUser: AuthenticatedUser, dto: CreateLeaveRequestDto) {
@@ -44,7 +46,7 @@ export class LeaveRequestService {
       );
     }
 
-    return this.leaveRequestRepository.create({
+    const created = await this.leaveRequestRepository.create({
       employeeId: currentUser.employeeId,
       leaveType: dto.leaveType,
       startDate: dto.startDate,
@@ -52,6 +54,19 @@ export class LeaveRequestService {
       reason: dto.reason,
       status: LeaveRequestStatus.PENDING,
     });
+
+    await this.auditLogService.record({
+      actorId: currentUser.userId,
+      actorEmail: currentUser.email,
+      actorRole: currentUser.role,
+      action: 'CREATE',
+      entity: 'LeaveRequest',
+      entityId: created.id,
+      after: created,
+      source: 'USER',
+    });
+
+    return created;
   }
 
   async approve(id: string, currentUser: AuthenticatedUser) {
@@ -115,11 +130,25 @@ export class LeaveRequestService {
       );
     }
 
-    return this.leaveRequestRepository.approve(
+    const approved = await this.leaveRequestRepository.approve(
       id,
       currentUser.employeeId,
       new Date(),
     );
+
+    await this.auditLogService.record({
+      actorId: currentUser.userId,
+      actorEmail: currentUser.email,
+      actorRole: currentUser.role,
+      action: 'APPROVE',
+      entity: 'LeaveRequest',
+      entityId: id,
+      before: leaveRequest,
+      after: approved,
+      source: 'USER',
+    });
+
+    return approved;
   }
 
   async reject(
@@ -173,12 +202,26 @@ export class LeaveRequestService {
       }
     }
 
-    return this.leaveRequestRepository.reject(
+    const rejected = await this.leaveRequestRepository.reject(
       id,
       currentUser.employeeId,
       new Date(),
       dto.rejectionReason,
     );
+
+    await this.auditLogService.record({
+      actorId: currentUser.userId,
+      actorEmail: currentUser.email,
+      actorRole: currentUser.role,
+      action: 'REJECT',
+      entity: 'LeaveRequest',
+      entityId: id,
+      before: leaveRequest,
+      after: rejected,
+      source: 'USER',
+    });
+
+    return rejected;
   }
 
   async findAll(query: LeaveRequestQueryDto, currentUser: AuthenticatedUser) {

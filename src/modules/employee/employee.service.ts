@@ -12,13 +12,17 @@ import { EmployeeRepository } from './employee.repository';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { EmployeeQueryDto } from './dto/employee-query.dto';
+import { AuditLogService } from '../audit-log/audit-log.service';
 
 import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
 export type { AuthenticatedUser };
 
 @Injectable()
 export class EmployeeService {
-  constructor(private readonly employeeRepository: EmployeeRepository) {}
+  constructor(
+    private readonly employeeRepository: EmployeeRepository,
+    private readonly auditLogService: AuditLogService,
+  ) {}
 
   async create(createEmployeeDto: CreateEmployeeDto) {
     const department = await this.employeeRepository.findDepartmentById(
@@ -80,6 +84,14 @@ export class EmployeeService {
     );
 
     // 5. Kembalikan data employee bersama temporaryPassword plaintext (hanya muncul di response ini)
+    await this.auditLogService.record({
+      action: 'CREATE',
+      entity: 'Employee',
+      entityId: employee.id,
+      after: employee,
+      source: 'USER',
+    });
+
     return {
       ...employee,
       temporaryPassword,
@@ -273,7 +285,18 @@ export class EmployeeService {
       }),
     };
 
-    return this.employeeRepository.update(id, data);
+    const updated = await this.employeeRepository.update(id, data);
+
+    await this.auditLogService.record({
+      action: 'UPDATE',
+      entity: 'Employee',
+      entityId: id,
+      before: employee,
+      after: updated,
+      source: 'USER',
+    });
+
+    return updated;
   }
 
   async remove(id: string) {
@@ -283,6 +306,14 @@ export class EmployeeService {
     }
 
     await this.employeeRepository.softDelete(id, EmployeeStatus.INACTIVE);
+
+    await this.auditLogService.record({
+      action: 'SOFT_DELETE',
+      entity: 'Employee',
+      entityId: id,
+      before: employee,
+      source: 'USER',
+    });
 
     return {
       message: 'Karyawan berhasil dinonaktifkan',
@@ -296,6 +327,14 @@ export class EmployeeService {
     }
 
     await this.employeeRepository.softDelete(id, EmployeeStatus.TERMINATED);
+
+    await this.auditLogService.record({
+      action: 'TERMINATE',
+      entity: 'Employee',
+      entityId: id,
+      before: employee,
+      source: 'USER',
+    });
 
     return {
       message: 'Karyawan berhasil diberhentikan secara permanen (TERMINATED)',
@@ -338,6 +377,16 @@ export class EmployeeService {
     }
 
     const reactivated = await this.employeeRepository.reactivate(id);
+
+    await this.auditLogService.record({
+      action: 'REACTIVATE',
+      entity: 'Employee',
+      entityId: id,
+      before: employee,
+      after: reactivated,
+      source: 'USER',
+    });
+
     return {
       ...this.mapToFullView(reactivated),
       message: 'Karyawan berhasil diaktifkan kembali',

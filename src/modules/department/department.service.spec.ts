@@ -8,10 +8,12 @@ import { DepartmentService } from './department.service';
 import { DepartmentRepository } from './department.repository';
 import { CreateDepartmentDto } from './dto/create-department.dto';
 import { UpdateDepartmentDto } from './dto/update-department.dto';
+import { AuditLogService } from '../audit-log/audit-log.service';
 
 describe('DepartmentService', () => {
   let departmentService: DepartmentService;
   let departmentRepository: jest.Mocked<Partial<DepartmentRepository>>;
+  let auditLogService: jest.Mocked<Partial<AuditLogService>>;
 
   const mockDepartment = {
     id: 'dept-uuid-1',
@@ -22,6 +24,10 @@ describe('DepartmentService', () => {
   };
 
   beforeEach(async () => {
+    auditLogService = {
+      record: jest.fn().mockResolvedValue({ id: 'audit-1' }),
+    };
+
     departmentRepository = {
       create: jest.fn(),
       findAll: jest.fn(),
@@ -37,6 +43,7 @@ describe('DepartmentService', () => {
       providers: [
         DepartmentService,
         { provide: DepartmentRepository, useValue: departmentRepository },
+        { provide: AuditLogService, useValue: auditLogService },
       ],
     }).compile();
 
@@ -193,6 +200,75 @@ describe('DepartmentService', () => {
         BadRequestException,
       );
       expect(departmentRepository.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Audit Logging in DepartmentService', () => {
+    it('should record CREATE audit log on create()', async () => {
+      departmentRepository.findByCode = jest.fn().mockResolvedValue(null);
+      departmentRepository.create = jest.fn().mockResolvedValue(mockDepartment);
+
+      await departmentService.create({
+        code: 'ENG',
+        name: 'Engineering',
+      });
+
+      expect(auditLogService.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'CREATE',
+          entity: 'Department',
+          entityId: mockDepartment.id,
+          after: mockDepartment,
+        }),
+      );
+    });
+
+    it('should record UPDATE audit log on update()', async () => {
+      departmentRepository.findById = jest.fn().mockResolvedValue(mockDepartment);
+      const updatedMock = { ...mockDepartment, name: 'Eng & Tech' };
+      departmentRepository.update = jest.fn().mockResolvedValue(updatedMock);
+
+      await departmentService.update('dept-uuid-1', { name: 'Eng & Tech' });
+
+      expect(auditLogService.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'UPDATE',
+          entity: 'Department',
+          entityId: 'dept-uuid-1',
+          before: mockDepartment,
+          after: updatedMock,
+        }),
+      );
+    });
+
+    it('should record DELETE audit log on remove()', async () => {
+      departmentRepository.findById = jest.fn().mockResolvedValue(mockDepartment);
+      departmentRepository.countActiveEmployees = jest.fn().mockResolvedValue(0);
+      departmentRepository.delete = jest.fn().mockResolvedValue(mockDepartment);
+
+      await departmentService.remove('dept-uuid-1');
+
+      expect(auditLogService.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'DELETE',
+          entity: 'Department',
+          entityId: 'dept-uuid-1',
+          before: mockDepartment,
+        }),
+      );
+    });
+
+    it('Non-blocking: create department succeeds even if audit recording returns null', async () => {
+      departmentRepository.findByCode = jest.fn().mockResolvedValue(null);
+      departmentRepository.create = jest.fn().mockResolvedValue(mockDepartment);
+      auditLogService.record = jest.fn().mockResolvedValue(null);
+
+      const result = await departmentService.create({
+        code: 'ENG',
+        name: 'Engineering',
+      });
+
+      expect(result).toEqual(mockDepartment);
     });
   });
 });

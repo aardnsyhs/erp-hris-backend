@@ -8,10 +8,14 @@ import { DepartmentRepository } from './department.repository';
 import { CreateDepartmentDto } from './dto/create-department.dto';
 import { UpdateDepartmentDto } from './dto/update-department.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
+import { AuditLogService } from '../audit-log/audit-log.service';
 
 @Injectable()
 export class DepartmentService {
-  constructor(private readonly departmentRepository: DepartmentRepository) {}
+  constructor(
+    private readonly departmentRepository: DepartmentRepository,
+    private readonly auditLogService: AuditLogService,
+  ) {}
 
   async create(createDepartmentDto: CreateDepartmentDto) {
     const existingDepartment = await this.departmentRepository.findByCode(
@@ -24,7 +28,17 @@ export class DepartmentService {
       );
     }
 
-    return this.departmentRepository.create(createDepartmentDto);
+    const created = await this.departmentRepository.create(createDepartmentDto);
+
+    await this.auditLogService.record({
+      action: 'CREATE',
+      entity: 'Department',
+      entityId: created.id,
+      after: created,
+      source: 'USER',
+    });
+
+    return created;
   }
 
   async findAll(query: PaginationQueryDto) {
@@ -83,11 +97,25 @@ export class DepartmentService {
       }
     }
 
-    return this.departmentRepository.update(id, updateDepartmentDto);
+    const updated = await this.departmentRepository.update(
+      id,
+      updateDepartmentDto,
+    );
+
+    await this.auditLogService.record({
+      action: 'UPDATE',
+      entity: 'Department',
+      entityId: id,
+      before: department,
+      after: updated,
+      source: 'USER',
+    });
+
+    return updated;
   }
 
   async remove(id: string) {
-    await this.findById(id);
+    const department = await this.findById(id);
 
     const activeEmployeesCount =
       await this.departmentRepository.countActiveEmployees(id);
@@ -98,6 +126,14 @@ export class DepartmentService {
     }
 
     await this.departmentRepository.delete(id);
+
+    await this.auditLogService.record({
+      action: 'DELETE',
+      entity: 'Department',
+      entityId: id,
+      before: department,
+      source: 'USER',
+    });
 
     return {
       message: 'Departemen berhasil dihapus',

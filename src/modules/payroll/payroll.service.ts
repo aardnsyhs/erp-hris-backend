@@ -15,10 +15,14 @@ import {
   PayrollResponseDto,
 } from './dto/payroll-response.dto';
 import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
+import { AuditLogService } from '../audit-log/audit-log.service';
 
 @Injectable()
 export class PayrollService {
-  constructor(private readonly payrollRepository: PayrollRepository) {}
+  constructor(
+    private readonly payrollRepository: PayrollRepository,
+    private readonly auditLogService: AuditLogService,
+  ) {}
 
   private getTodayUtcDate(): Date {
     const now = new Date();
@@ -137,11 +141,21 @@ export class PayrollService {
       status: PayrollStatus.DRAFT,
     });
 
+    await this.auditLogService.record({
+      action: 'CREATE',
+      entity: 'Payroll',
+      entityId: created.id,
+      after: created,
+      source: 'USER',
+    });
+
     const fullPayroll = await this.payrollRepository.findById(created.id);
     return fullPayroll ? this.mapToFullView(fullPayroll) : created;
   }
 
   async process(id: string) {
+    const existing = await this.payrollRepository.findById(id);
+
     const updatedCount = await this.payrollRepository.updateStatusIf(
       id,
       PayrollStatus.DRAFT,
@@ -161,10 +175,21 @@ export class PayrollService {
     }
 
     const payroll = await this.payrollRepository.findById(id);
+
+    await this.auditLogService.record({
+      action: 'PROCESS',
+      entity: 'Payroll',
+      entityId: id,
+      before: existing,
+      after: payroll,
+      source: 'USER',
+    });
+
     return payroll ? this.mapToFullView(payroll) : null;
   }
 
   async pay(id: string) {
+    const existing = await this.payrollRepository.findById(id);
     const todayUtc = this.getTodayUtcDate();
     const updatedCount = await this.payrollRepository.updateStatusIf(
       id,
@@ -186,6 +211,16 @@ export class PayrollService {
     }
 
     const payroll = await this.payrollRepository.findById(id);
+
+    await this.auditLogService.record({
+      action: 'PAY',
+      entity: 'Payroll',
+      entityId: id,
+      before: existing,
+      after: payroll,
+      source: 'USER',
+    });
+
     return payroll ? this.mapToFullView(payroll) : null;
   }
 
@@ -235,23 +270,43 @@ export class PayrollService {
     }
 
     const updatedPayroll = await this.payrollRepository.findById(id);
+
+    await this.auditLogService.record({
+      action: 'UPDATE',
+      entity: 'Payroll',
+      entityId: id,
+      before: payroll,
+      after: updatedPayroll,
+      source: 'USER',
+    });
+
     return updatedPayroll ? this.mapToFullView(updatedPayroll) : null;
   }
 
   async remove(id: string) {
+    const payroll = await this.payrollRepository.findById(id);
+
     const deletedCount = await this.payrollRepository.deleteDraftIf(id);
 
     if (deletedCount === 0) {
-      const payroll = await this.payrollRepository.findById(id);
-      if (!payroll) {
+      const p = await this.payrollRepository.findById(id);
+      if (!p) {
         throw new NotFoundException(
           `Payroll dengan ID '${id}' tidak ditemukan`,
         );
       }
       throw new ConflictException(
-        `Hanya payroll dengan status DRAFT yang dapat dihapus, status saat ini: ${payroll.status}`,
+        `Hanya payroll dengan status DRAFT yang dapat dihapus, status saat ini: ${p.status}`,
       );
     }
+
+    await this.auditLogService.record({
+      action: 'DELETE',
+      entity: 'Payroll',
+      entityId: id,
+      before: payroll,
+      source: 'USER',
+    });
 
     return {
       message: 'Payroll berhasil dihapus',

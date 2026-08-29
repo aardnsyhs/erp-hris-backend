@@ -11,10 +11,12 @@ import { EmployeeService, AuthenticatedUser } from './employee.service';
 import { EmployeeRepository } from './employee.repository';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
+import { AuditLogService } from '../audit-log/audit-log.service';
 
 describe('EmployeeService', () => {
   let employeeService: EmployeeService;
   let employeeRepository: jest.Mocked<Partial<EmployeeRepository>>;
+  let auditLogService: jest.Mocked<Partial<AuditLogService>>;
 
   const mockDepartment = {
     id: 'dept-eng-uuid',
@@ -74,6 +76,10 @@ describe('EmployeeService', () => {
   };
 
   beforeEach(async () => {
+    auditLogService = {
+      record: jest.fn().mockResolvedValue({ id: 'audit-1' }),
+    };
+
     employeeRepository = {
       create: jest.fn(),
       createWithUser: jest.fn(),
@@ -94,6 +100,7 @@ describe('EmployeeService', () => {
       providers: [
         EmployeeService,
         { provide: EmployeeRepository, useValue: employeeRepository },
+        { provide: AuditLogService, useValue: auditLogService },
       ],
     }).compile();
 
@@ -697,6 +704,126 @@ describe('EmployeeService', () => {
         ConflictException,
       );
       expect(employeeRepository.reactivate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Audit Logging in EmployeeService', () => {
+    it('should record CREATE audit log when employee is created', async () => {
+      employeeRepository.findDepartmentById = jest
+        .fn()
+        .mockResolvedValue(mockDepartment);
+      employeeRepository.findByNip = jest.fn().mockResolvedValue(null);
+      employeeRepository.findByEmail = jest.fn().mockResolvedValue(null);
+      employeeRepository.findUserByEmail = jest.fn().mockResolvedValue(null);
+      employeeRepository.createWithUser = jest
+        .fn()
+        .mockResolvedValue(mockEmployee);
+
+      await employeeService.create({
+        departmentId: 'dept-eng-uuid',
+        nip: 'EMP001',
+        fullName: 'John Doe',
+        email: 'john@example.com',
+        jobTitle: 'Software Engineer',
+        hireDate: new Date('2024-01-01'),
+        baseSalary: '12000000',
+        role: UserRole.EMPLOYEE,
+      });
+
+      expect(auditLogService.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'CREATE',
+          entity: 'Employee',
+          entityId: mockEmployee.id,
+        }),
+      );
+    });
+
+    it('should record UPDATE audit log when employee is updated', async () => {
+      employeeRepository.findById = jest.fn().mockResolvedValue(mockEmployee);
+      const updatedMock = { ...mockEmployee, fullName: 'John Updated' };
+      employeeRepository.update = jest.fn().mockResolvedValue(updatedMock);
+
+      await employeeService.update('emp-uuid-1', { fullName: 'John Updated' });
+
+      expect(auditLogService.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'UPDATE',
+          entity: 'Employee',
+          entityId: 'emp-uuid-1',
+          before: mockEmployee,
+          after: updatedMock,
+        }),
+      );
+    });
+
+    it('should record SOFT_DELETE audit log on remove()', async () => {
+      employeeRepository.findById = jest.fn().mockResolvedValue(mockEmployee);
+      employeeRepository.softDelete = jest.fn().mockResolvedValue(mockEmployee);
+
+      await employeeService.remove('emp-uuid-1');
+
+      expect(auditLogService.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'SOFT_DELETE',
+          entity: 'Employee',
+          entityId: 'emp-uuid-1',
+          before: mockEmployee,
+        }),
+      );
+    });
+
+    it('should record TERMINATE audit log on terminate()', async () => {
+      employeeRepository.findById = jest.fn().mockResolvedValue(mockEmployee);
+      employeeRepository.softDelete = jest.fn().mockResolvedValue(mockEmployee);
+
+      await employeeService.terminate('emp-uuid-1');
+
+      expect(auditLogService.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'TERMINATE',
+          entity: 'Employee',
+          entityId: 'emp-uuid-1',
+          before: mockEmployee,
+        }),
+      );
+    });
+
+    it('should record REACTIVATE audit log on reactivate()', async () => {
+      const inactiveEmp = {
+        ...mockEmployee,
+        status: EmployeeStatus.INACTIVE,
+        deletedAt: new Date(),
+      };
+      employeeRepository.findByIdIncludingDeleted = jest
+        .fn()
+        .mockResolvedValue(inactiveEmp);
+      employeeRepository.findByNip = jest.fn().mockResolvedValue(null);
+      employeeRepository.findByEmail = jest.fn().mockResolvedValue(null);
+      employeeRepository.reactivate = jest.fn().mockResolvedValue(mockEmployee);
+
+      await employeeService.reactivate('emp-uuid-1');
+
+      expect(auditLogService.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'REACTIVATE',
+          entity: 'Employee',
+          entityId: 'emp-uuid-1',
+          before: inactiveEmp,
+          after: mockEmployee,
+        }),
+      );
+    });
+
+    it('Non-blocking: update employee succeeds even if audit recording returns null', async () => {
+      employeeRepository.findById = jest.fn().mockResolvedValue(mockEmployee);
+      employeeRepository.update = jest.fn().mockResolvedValue(mockEmployee);
+      auditLogService.record = jest.fn().mockResolvedValue(null);
+
+      const result = await employeeService.update('emp-uuid-1', {
+        fullName: 'New Name',
+      });
+      expect(result).toEqual(mockEmployee);
     });
   });
 });

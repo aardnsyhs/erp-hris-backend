@@ -43,6 +43,23 @@ enum PayrollStatus {
   PAID
 }
 
+enum DocumentType {
+  KTP
+  NPWP
+  BPJS_KES
+  BPJS_TK
+  IJAZAH
+  SERTIFIKAT
+  KONTRAK
+  LAINNYA
+}
+
+enum ScanStatus {
+  PENDING
+  CLEAN
+  QUARANTINED
+}
+
 model User {
   id           String   @id @default(uuid())
   email        String   @unique
@@ -53,8 +70,10 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  employee      Employee?      @relation(fields: [employeeId], references: [id], onDelete: SetNull)
-  refreshTokens RefreshToken[]
+  employee          Employee?          @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  refreshTokens     RefreshToken[]
+  auditLogs         AuditLog[]         @relation("UserAuditLogs")
+  uploadedDocuments EmployeeDocument[] @relation("UserUploadedDocuments")
 
   @@index([role])
   @@index([isActive])
@@ -101,12 +120,14 @@ model Employee {
   createdAt    DateTime       @default(now()) @map("created_at")
   updatedAt    DateTime       @updatedAt @map("updated_at")
 
-  department     Department     @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  user           User?
-  attendances    Attendance[]
-  leaveRequests  LeaveRequest[] @relation("EmployeeLeaveRequests")
-  approvedLeaves LeaveRequest[] @relation("ApprovedLeaveRequests")
-  payrolls       Payroll[]
+  department        Department                 @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  user              User?
+  attendances       Attendance[]
+  leaveRequests     LeaveRequest[]             @relation("EmployeeLeaveRequests")
+  approvedLeaves    LeaveRequest[]             @relation("ApprovedLeaveRequests")
+  payrolls          Payroll[]
+  emergencyContacts EmployeeEmergencyContact[]
+  documents         EmployeeDocument[]
 
   @@index([departmentId])
   @@index([status])
@@ -189,3 +210,72 @@ model WorkSchedule {
 
   @@map("work_schedules")
 }
+
+model AuditLog {
+  id            String   @id @default(uuid())
+  actorId       String?  @map("actor_id")
+  actorEmail    String?  @map("actor_email")
+  actorRole     String?  @map("actor_role")
+  action        String
+  entity        String
+  entityId      String   @map("entity_id")
+  before        Json?
+  after         Json?
+  source        String   @default("USER")
+  ipAddress     String?  @map("ip_address")
+  userAgent     String?  @map("user_agent")
+  correlationId String?  @map("correlation_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  actor User? @relation("UserAuditLogs", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entity, entityId])
+  @@index([actorId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model EmployeeEmergencyContact {
+  id           String   @id @default(uuid())
+  employeeId   String   @map("employee_id")
+  name         String
+  relationship String
+  phone        String
+  email        String?
+  isPrimary    Boolean  @default(false) @map("is_primary")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@index([employeeId])
+  @@map("employee_emergency_contacts")
+}
+
+model EmployeeDocument {
+  id            String       @id @default(uuid())
+  employeeId    String       @map("employee_id")
+  documentType  DocumentType @map("document_type")
+  title         String
+  fileName      String       @map("file_name")
+  storagePath   String       @map("storage_path")
+  mimeType      String       @map("mime_type")
+  fileSizeBytes Int          @map("file_size_bytes")
+  scanStatus    ScanStatus   @default(PENDING) @map("scan_status")
+  expiryDate    DateTime?    @map("expiry_date") @db.Date
+  uploadedById  String       @map("uploaded_by_id")
+  deletedAt     DateTime?    @map("deleted_at")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  uploadedBy User     @relation("UserUploadedDocuments", fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  @@index([employeeId])
+  @@index([documentType])
+  @@index([expiryDate])
+  @@map("employee_documents")
+}
+
+

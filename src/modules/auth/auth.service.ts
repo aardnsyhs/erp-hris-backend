@@ -13,6 +13,7 @@ import { AuthRepository } from './auth.repository';
 import { LoginDto } from './dto/login.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { AuthUserDto } from './dto/auth-response.dto';
+import { AuditLogService } from '../audit-log/audit-log.service';
 
 export interface LoginResult {
   accessToken: string;
@@ -26,6 +27,7 @@ export class AuthService {
     private readonly authRepository: AuthRepository,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly auditLogService: AuditLogService,
   ) {}
 
   async login(loginDto: LoginDto): Promise<LoginResult> {
@@ -33,10 +35,28 @@ export class AuthService {
 
     const user = await this.authRepository.findByEmail(loginDto.email);
     if (!user) {
+      await this.auditLogService.record({
+        action: 'LOGIN_FAILED',
+        entity: 'User',
+        entityId: loginDto.email,
+        actorEmail: loginDto.email,
+        before: { reason: 'User not found' },
+        source: 'USER',
+      });
       throw new UnauthorizedException(genericErrorMessage);
     }
 
     if (!user.isActive) {
+      await this.auditLogService.record({
+        actorId: user.id,
+        actorEmail: user.email,
+        actorRole: user.role,
+        action: 'LOGIN_FAILED',
+        entity: 'User',
+        entityId: user.id,
+        before: { reason: 'Account inactive' },
+        source: 'USER',
+      });
       throw new UnauthorizedException(
         'Akun Anda telah dinonaktifkan. Silakan hubungi Administrator HR.',
       );
@@ -47,6 +67,16 @@ export class AuthService {
       user.passwordHash,
     );
     if (!isPasswordValid) {
+      await this.auditLogService.record({
+        actorId: user.id,
+        actorEmail: user.email,
+        actorRole: user.role,
+        action: 'LOGIN_FAILED',
+        entity: 'User',
+        entityId: user.id,
+        before: { reason: 'Invalid password' },
+        source: 'USER',
+      });
       throw new UnauthorizedException(genericErrorMessage);
     }
 
@@ -90,6 +120,16 @@ export class AuthService {
       refreshTokenHash,
       expiresAt,
     );
+
+    await this.auditLogService.record({
+      actorId: user.id,
+      actorEmail: user.email,
+      actorRole: user.role,
+      action: 'LOGIN',
+      entity: 'User',
+      entityId: user.id,
+      source: 'USER',
+    });
 
     return {
       accessToken,
@@ -229,6 +269,13 @@ export class AuthService {
     }
 
     await this.authRepository.revokeAllRefreshTokensByUserId(userId);
+    await this.auditLogService.record({
+      actorId: userId,
+      action: 'LOGOUT',
+      entity: 'User',
+      entityId: userId,
+      source: 'USER',
+    });
   }
 
   async getMe(userId: string) {
@@ -290,6 +337,16 @@ export class AuthService {
 
     const newPasswordHash = await bcrypt.hash(dto.newPassword, 10);
     await this.authRepository.updatePassword(userId, newPasswordHash);
+
+    await this.auditLogService.record({
+      actorId: userId,
+      actorEmail: user.email,
+      actorRole: user.role,
+      action: 'CHANGE_PASSWORD',
+      entity: 'User',
+      entityId: userId,
+      source: 'USER',
+    });
 
     return {
       message: 'Password berhasil diubah',

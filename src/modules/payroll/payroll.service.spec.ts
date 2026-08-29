@@ -11,10 +11,12 @@ import { PayrollRepository } from './payroll.repository';
 import { CreatePayrollDto } from './dto/create-payroll.dto';
 import { UpdatePayrollDto } from './dto/update-payroll.dto';
 import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
+import { AuditLogService } from '../audit-log/audit-log.service';
 
 describe('PayrollService', () => {
   let payrollService: PayrollService;
   let payrollRepository: jest.Mocked<Partial<PayrollRepository>>;
+  let auditLogService: jest.Mocked<Partial<AuditLogService>>;
 
   const mockDepartmentEng = {
     id: 'dept-eng-uuid',
@@ -123,6 +125,10 @@ describe('PayrollService', () => {
   };
 
   beforeEach(async () => {
+    auditLogService = {
+      record: jest.fn().mockResolvedValue({ id: 'audit-1' }),
+    };
+
     payrollRepository = {
       create: jest.fn(),
       findById: jest.fn(),
@@ -139,6 +145,7 @@ describe('PayrollService', () => {
       providers: [
         PayrollService,
         { provide: PayrollRepository, useValue: payrollRepository },
+        { provide: AuditLogService, useValue: auditLogService },
       ],
     }).compile();
 
@@ -531,6 +538,122 @@ describe('PayrollService', () => {
       expect((result as any).deductions).toBeDefined();
       expect((result as any).netSalary).toBeDefined();
       expect((result as any).netSalary).toEqual(new Prisma.Decimal(17000000));
+    });
+  });
+
+  describe('Audit Logging in PayrollService', () => {
+    const createDto: CreatePayrollDto = {
+      employeeId: 'emp-uuid-1',
+      periodStart: new Date('2026-08-01'),
+      periodEnd: new Date('2026-08-31'),
+      allowances: '2000000',
+      deductions: '500000',
+    };
+
+    it('should record CREATE audit log on create()', async () => {
+      payrollRepository.findEmployeeById = jest
+        .fn()
+        .mockResolvedValue(mockEmployee);
+      payrollRepository.findByEmployeeAndPeriod = jest
+        .fn()
+        .mockResolvedValue(null);
+      payrollRepository.create = jest
+        .fn()
+        .mockResolvedValue(mockDraftPayroll);
+      payrollRepository.findById = jest
+        .fn()
+        .mockResolvedValue(mockDraftPayroll);
+
+      await payrollService.create(createDto);
+
+      expect(auditLogService.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'CREATE',
+          entity: 'Payroll',
+          entityId: mockDraftPayroll.id,
+        }),
+      );
+    });
+
+    it('should record PROCESS audit log on process()', async () => {
+      payrollRepository.findById = jest
+        .fn()
+        .mockResolvedValue(mockDraftPayroll);
+      payrollRepository.updateStatusIf = jest.fn().mockResolvedValue(1);
+
+      await payrollService.process('payroll-uuid-1');
+
+      expect(auditLogService.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'PROCESS',
+          entity: 'Payroll',
+          entityId: 'payroll-uuid-1',
+        }),
+      );
+    });
+
+    it('should record PAY audit log on pay()', async () => {
+      payrollRepository.findById = jest
+        .fn()
+        .mockResolvedValue(mockDraftPayroll);
+      payrollRepository.updateStatusIf = jest.fn().mockResolvedValue(1);
+
+      await payrollService.pay('payroll-uuid-1');
+
+      expect(auditLogService.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'PAY',
+          entity: 'Payroll',
+          entityId: 'payroll-uuid-1',
+        }),
+      );
+    });
+
+    it('should record UPDATE audit log on update()', async () => {
+      payrollRepository.findById = jest
+        .fn()
+        .mockResolvedValue(mockDraftPayroll);
+      payrollRepository.updateDraftIf = jest.fn().mockResolvedValue(1);
+
+      await payrollService.update('payroll-uuid-1', { allowances: '3000000' });
+
+      expect(auditLogService.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'UPDATE',
+          entity: 'Payroll',
+          entityId: 'payroll-uuid-1',
+          before: mockDraftPayroll,
+        }),
+      );
+    });
+
+    it('should record DELETE audit log on remove()', async () => {
+      payrollRepository.findById = jest
+        .fn()
+        .mockResolvedValue(mockDraftPayroll);
+      payrollRepository.deleteDraftIf = jest.fn().mockResolvedValue(1);
+
+      await payrollService.remove('payroll-uuid-1');
+
+      expect(auditLogService.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'DELETE',
+          entity: 'Payroll',
+          entityId: 'payroll-uuid-1',
+          before: mockDraftPayroll,
+        }),
+      );
+    });
+
+    it('Non-blocking: process payroll succeeds even if audit recording returns null', async () => {
+      payrollRepository.findById = jest
+        .fn()
+        .mockResolvedValue(mockDraftPayroll);
+      payrollRepository.updateStatusIf = jest.fn().mockResolvedValue(1);
+      auditLogService.record = jest.fn().mockResolvedValue(null);
+
+      const result = await payrollService.process('payroll-uuid-1');
+      expect(result).toBeDefined();
     });
   });
 });

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
@@ -12,6 +12,12 @@ import { AttendanceModule } from './modules/attendance/attendance.module';
 import { LeaveRequestModule } from './modules/leave-request/leave-request.module';
 import { PayrollModule } from './modules/payroll/payroll.module';
 import { WorkScheduleModule } from './modules/work-schedule/work-schedule.module';
+import { AuditLogModule } from './modules/audit-log/audit-log.module';
+import { EmergencyContactModule } from './modules/emergency-contact/emergency-contact.module';
+import { EmployeeDocumentModule } from './modules/employee-document/employee-document.module';
+import { StorageModule } from './common/storage/storage.module';
+import { JobModule } from './common/jobs/job.module';
+import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 
@@ -31,9 +37,14 @@ import { RolesGuard } from './common/guards/roles.guard';
       ],
     }),
     PrismaModule,
+    AuditLogModule,
+    StorageModule,
+    JobModule,
     AuthModule,
     DepartmentModule,
     EmployeeModule,
+    EmergencyContactModule,
+    EmployeeDocumentModule,
     AttendanceModule,
     LeaveRequestModule,
     PayrollModule,
@@ -54,4 +65,9 @@ import { RolesGuard } from './common/guards/roles.guard';
     },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(CorrelationIdMiddleware).forRoutes('*');
+  }
+}
+

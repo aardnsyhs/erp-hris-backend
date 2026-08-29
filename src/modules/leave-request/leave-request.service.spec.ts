@@ -10,6 +10,7 @@ import { LeaveRequestRepository } from './leave-request.repository';
 import { CreateLeaveRequestDto } from './dto/create-leave-request.dto';
 import { RejectLeaveRequestDto } from './dto/reject-leave-request.dto';
 import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
+import { AuditLogService } from '../audit-log/audit-log.service';
 
 describe('LeaveRequestService', () => {
   let leaveRequestService: LeaveRequestService;
@@ -114,22 +115,35 @@ describe('LeaveRequestService', () => {
     approver: null,
   };
 
+  let auditLogService: jest.Mocked<Partial<AuditLogService>>;
+
   beforeEach(async () => {
+    auditLogService = {
+      record: jest.fn().mockResolvedValue({ id: 'audit-1' }),
+    };
+
     leaveRequestRepository = {
       create: jest.fn(),
       findById: jest.fn(),
       findOverlappingApproved: jest.fn(),
+      findEmployeeById: jest.fn(),
       approve: jest.fn(),
       reject: jest.fn(),
       findAll: jest.fn(),
       countAll: jest.fn(),
-      findEmployeeById: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         LeaveRequestService,
-        { provide: LeaveRequestRepository, useValue: leaveRequestRepository },
+        {
+          provide: LeaveRequestRepository,
+          useValue: leaveRequestRepository,
+        },
+        {
+          provide: AuditLogService,
+          useValue: auditLogService,
+        },
       ],
     }).compile();
 
@@ -548,6 +562,124 @@ describe('LeaveRequestService', () => {
       expect(emp.baseSalary).toBeUndefined();
       expect(appr).toBeDefined();
       expect(appr.baseSalary).toBeUndefined();
+    });
+  });
+
+  describe('Audit Logging in LeaveRequestService', () => {
+    const createDto: CreateLeaveRequestDto = {
+      leaveType: LeaveType.ANNUAL,
+      startDate: new Date('2026-09-01'),
+      endDate: new Date('2026-09-03'),
+      reason: 'Annual family vacation',
+    };
+
+    it('should record CREATE audit log on create()', async () => {
+      leaveRequestRepository.findOverlappingApproved = jest
+        .fn()
+        .mockResolvedValue(null);
+      leaveRequestRepository.create = jest
+        .fn()
+        .mockResolvedValue(mockLeaveRequest);
+
+      await leaveRequestService.create(employeeUser, createDto);
+
+      expect(auditLogService.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'CREATE',
+          entity: 'LeaveRequest',
+          entityId: mockLeaveRequest.id,
+          actorId: employeeUser.userId,
+        }),
+      );
+    });
+
+    it('should record APPROVE audit log on approve()', async () => {
+      leaveRequestRepository.findById = jest
+        .fn()
+        .mockResolvedValue(mockLeaveRequest);
+      leaveRequestRepository.findEmployeeById = jest
+        .fn()
+        .mockResolvedValue(managerSameDept);
+      leaveRequestRepository.findOverlappingApproved = jest
+        .fn()
+        .mockResolvedValue(null);
+      const approvedMock = {
+        ...mockLeaveRequest,
+        status: LeaveRequestStatus.APPROVED,
+      };
+      leaveRequestRepository.approve = jest
+        .fn()
+        .mockResolvedValue(approvedMock);
+
+      await leaveRequestService.approve('lr-uuid-1', managerSameDeptUser);
+
+      expect(auditLogService.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'APPROVE',
+          entity: 'LeaveRequest',
+          entityId: 'lr-uuid-1',
+          before: mockLeaveRequest,
+          after: approvedMock,
+          actorId: managerSameDeptUser.userId,
+        }),
+      );
+    });
+
+    it('should record REJECT audit log on reject()', async () => {
+      leaveRequestRepository.findById = jest
+        .fn()
+        .mockResolvedValue(mockLeaveRequest);
+      leaveRequestRepository.findEmployeeById = jest
+        .fn()
+        .mockResolvedValue(managerSameDept);
+      const rejectedMock = {
+        ...mockLeaveRequest,
+        status: LeaveRequestStatus.REJECTED,
+      };
+      leaveRequestRepository.reject = jest
+        .fn()
+        .mockResolvedValue(rejectedMock);
+
+      await leaveRequestService.reject('lr-uuid-1', managerSameDeptUser, {
+        rejectionReason: 'Not enough staff',
+      });
+
+      expect(auditLogService.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'REJECT',
+          entity: 'LeaveRequest',
+          entityId: 'lr-uuid-1',
+          before: mockLeaveRequest,
+          after: rejectedMock,
+          actorId: managerSameDeptUser.userId,
+        }),
+      );
+    });
+
+    it('Non-blocking: approve leave succeeds even if audit recording returns null', async () => {
+      leaveRequestRepository.findById = jest
+        .fn()
+        .mockResolvedValue(mockLeaveRequest);
+      leaveRequestRepository.findEmployeeById = jest
+        .fn()
+        .mockResolvedValue(managerSameDept);
+      leaveRequestRepository.findOverlappingApproved = jest
+        .fn()
+        .mockResolvedValue(null);
+      const approvedMock = {
+        ...mockLeaveRequest,
+        status: LeaveRequestStatus.APPROVED,
+      };
+      leaveRequestRepository.approve = jest
+        .fn()
+        .mockResolvedValue(approvedMock);
+      auditLogService.record = jest.fn().mockResolvedValue(null);
+
+      const result = await leaveRequestService.approve(
+        'lr-uuid-1',
+        managerSameDeptUser,
+      );
+      expect(result).toEqual(approvedMock);
     });
   });
 });
