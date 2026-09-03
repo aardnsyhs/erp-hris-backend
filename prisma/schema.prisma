@@ -129,17 +129,20 @@ model RefreshToken {
 }
 
 model Department {
-  id        String     @id @default(uuid())
-  code      String     @unique
-  name      String
-  createdAt DateTime   @default(now()) @map("created_at")
-  updatedAt DateTime   @updatedAt @map("updated_at")
-  employees Employee[]
+  id         String    @id @default(uuid())
+  code       String    @unique
+  name       String
+  isActive   Boolean   @default(true) @map("is_active")
+  archivedAt DateTime? @map("archived_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  employees  Employee[]
 
   positionAssignments     EmployeePositionAssignment[]
   movementFromDepartments EmployeeMovementHistory[]    @relation("MovementFromDepartment")
   movementToDepartments   EmployeeMovementHistory[]    @relation("MovementToDepartment")
 
+  @@index([isActive])
   @@map("departments")
 }
 

@@ -22,6 +22,8 @@ describe('EmployeeService', () => {
     id: 'dept-eng-uuid',
     code: 'ENG',
     name: 'Engineering',
+    isActive: true,
+    archivedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -167,6 +169,22 @@ describe('EmployeeService', () => {
 
       await expect(employeeService.create(createDto)).rejects.toThrow(
         BadRequestException,
+      );
+      expect(employeeRepository.createWithUser).not.toHaveBeenCalled();
+    });
+
+    it('2b. Gagal: Departemen diarsipkan melempar BadRequestException', async () => {
+      employeeRepository.findDepartmentById = jest.fn().mockResolvedValue({
+        ...mockDepartment,
+        isActive: false,
+        archivedAt: new Date(),
+      });
+
+      await expect(employeeService.create(createDto)).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(employeeService.create(createDto)).rejects.toThrow(
+        /telah diarsipkan/,
       );
       expect(employeeRepository.createWithUser).not.toHaveBeenCalled();
     });
@@ -559,6 +577,26 @@ describe('EmployeeService', () => {
           departmentId: 'invalid-dept-uuid',
         }),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('18b. Gagal: update departmentId ke departemen yang diarsipkan melempar BadRequestException', async () => {
+      employeeRepository.findById = jest.fn().mockResolvedValue(mockEmployee);
+      employeeRepository.findDepartmentById = jest.fn().mockResolvedValue({
+        ...mockDepartment,
+        isActive: false,
+        archivedAt: new Date(),
+      });
+
+      await expect(
+        employeeService.update('emp-uuid-1', {
+          departmentId: 'dept-eng-uuid',
+        }),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        employeeService.update('emp-uuid-1', {
+          departmentId: 'dept-eng-uuid',
+        }),
+      ).rejects.toThrow(/telah diarsipkan/);
     });
   });
 

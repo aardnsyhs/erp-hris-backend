@@ -33,6 +33,11 @@ export class EmployeeService {
         'Departemen tidak valid atau tidak ditemukan',
       );
     }
+    if (!department.isActive) {
+      throw new BadRequestException(
+        `Departemen '${department.name}' telah diarsipkan dan tidak dapat menerima penambahan karyawan baru`,
+      );
+    }
 
     const existingNip = await this.employeeRepository.findByNip(
       createEmployeeDto.nip,
@@ -252,6 +257,11 @@ export class EmployeeService {
       if (!department) {
         throw new BadRequestException(
           'Departemen tidak valid atau tidak ditemukan',
+        );
+      }
+      if (!department.isActive) {
+        throw new BadRequestException(
+          `Departemen '${department.name}' telah diarsipkan dan tidak dapat menerima pemindahan karyawan`,
         );
       }
     }

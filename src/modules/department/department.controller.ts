@@ -21,8 +21,12 @@ import { UserRole } from '@prisma/client';
 import { DepartmentService } from './department.service';
 import { CreateDepartmentDto } from './dto/create-department.dto';
 import { UpdateDepartmentDto } from './dto/update-department.dto';
-import { PaginationQueryDto } from './dto/pagination-query.dto';
+import { DepartmentQueryDto } from './dto/department-query.dto';
+import { ArchiveDepartmentDto } from './dto/archive-department.dto';
+import { RestoreDepartmentDto } from './dto/restore-department.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
 
 @ApiTags('Departments')
 @ApiBearerAuth('JWT-auth')
@@ -47,13 +51,14 @@ export class DepartmentController {
   @Get()
   @ApiOperation({
     summary: 'Daftar departemen terpaginasi (All authenticated roles)',
-    description: 'Mengambil daftar departemen dengan paginasi dan pencarian.',
+    description:
+      'Mengambil daftar departemen dengan paginasi, pencarian, dan filter status (ACTIVE, ARCHIVED, ALL). Default: ACTIVE.',
   })
   @ApiResponse({
     status: 200,
     description: 'Daftar departemen berhasil diambil',
   })
-  async findAll(@Query() query: PaginationQueryDto) {
+  async findAll(@Query() query: DepartmentQueryDto) {
     return this.departmentService.findAll(query);
   }
 
@@ -91,17 +96,67 @@ export class DepartmentController {
   }
 
   @Roles(UserRole.HR_ADMIN)
+  @Patch(':id/archive')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Arsipkan departemen (HR_ADMIN only)',
+    description:
+      'Menonaktifkan departemen. Ditolak jika masih memiliki karyawan aktif.',
+  })
+  @ApiParam({ name: 'id', description: 'UUID departemen' })
+  @ApiResponse({ status: 200, description: 'Departemen berhasil diarsipkan' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Departemen sudah diarsipkan atau masih memiliki karyawan aktif',
+  })
+  @ApiResponse({ status: 404, description: 'Departemen tidak ditemukan' })
+  async archive(
+    @Param('id') id: string,
+    @Body() archiveDepartmentDto: ArchiveDepartmentDto,
+    @CurrentUser() currentUser: AuthenticatedUser,
+  ) {
+    return this.departmentService.archive(id, archiveDepartmentDto, currentUser);
+  }
+
+  @Roles(UserRole.HR_ADMIN)
+  @Patch(':id/restore')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Aktifkan kembali departemen (HR_ADMIN only)',
+    description: 'Mengaktifkan kembali departemen yang telah diarsipkan.',
+  })
+  @ApiParam({ name: 'id', description: 'UUID departemen' })
+  @ApiResponse({
+    status: 200,
+    description: 'Departemen berhasil diaktifkan kembali',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Departemen sudah dalam status aktif',
+  })
+  @ApiResponse({ status: 404, description: 'Departemen tidak ditemukan' })
+  async restore(
+    @Param('id') id: string,
+    @Body() restoreDepartmentDto: RestoreDepartmentDto,
+    @CurrentUser() currentUser: AuthenticatedUser,
+  ) {
+    return this.departmentService.restore(id, restoreDepartmentDto, currentUser);
+  }
+
+  @Roles(UserRole.HR_ADMIN)
   @Delete(':id')
   @ApiOperation({
     summary: 'Hapus departemen (HR_ADMIN only)',
     description:
-      'Menghapus departemen secara permanen. Ditolak jika masih terdapat karyawan aktif di dalamnya.',
+      'Menghapus departemen secara permanen. Ditolak jika memiliki riwayat karyawan atau penugasan posisi.',
   })
   @ApiParam({ name: 'id', description: 'UUID departemen' })
   @ApiResponse({ status: 200, description: 'Departemen berhasil dihapus' })
   @ApiResponse({
     status: 400,
-    description: 'Terdapat karyawan aktif di departemen ini',
+    description:
+      'Terdapat data karyawan atau penugasan posisi terkait dengan departemen ini',
   })
   @ApiResponse({ status: 404, description: 'Departemen tidak ditemukan' })
   async remove(@Param('id') id: string) {

@@ -45,6 +45,8 @@ describe('PositionAssignmentService', () => {
     id: 'dept-1',
     code: 'ENG',
     name: 'Engineering',
+    isActive: true,
+    archivedAt: null,
   };
 
   const mockActiveAssignment = {
@@ -244,6 +246,41 @@ describe('PositionAssignmentService', () => {
           hrAdminUser,
         ),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('3b. Gagal jika departemen sedang tidak aktif/diarsipkan (isActive=false) -> BadRequestException', async () => {
+      repository.findEmployeeById.mockResolvedValue(mockEmployee as any);
+      repository.findPositionById.mockResolvedValue(mockPosition as any);
+      repository.findDepartmentById.mockResolvedValue({
+        ...mockDepartment,
+        isActive: false,
+        archivedAt: new Date(),
+      } as any);
+
+      await expect(
+        service.create(
+          'emp-1',
+          {
+            positionId: 'pos-2',
+            departmentId: 'dept-1',
+            effectiveFrom: '2026-06-01',
+            assignmentType: AssignmentType.PROMOTION,
+          },
+          hrAdminUser,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.create(
+          'emp-1',
+          {
+            positionId: 'pos-2',
+            departmentId: 'dept-1',
+            effectiveFrom: '2026-06-01',
+            assignmentType: AssignmentType.PROMOTION,
+          },
+          hrAdminUser,
+        ),
+      ).rejects.toThrow(/sedang non-aktif\/diarsipkan/);
     });
 
     it('4. Gagal jika employee tidak ditemukan -> NotFoundException', async () => {

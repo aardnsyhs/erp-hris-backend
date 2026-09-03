@@ -1,10 +1,36 @@
 import { Injectable } from '@nestjs/common';
 import { Department, EmployeeStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { DepartmentStatusFilter } from './dto/department-query.dto';
 
 @Injectable()
 export class DepartmentRepository {
   constructor(private readonly prisma: PrismaService) {}
+
+  private buildWhere(options?: {
+    search?: string;
+    status?: DepartmentStatusFilter;
+  }): Prisma.DepartmentWhereInput {
+    const where: Prisma.DepartmentWhereInput = {};
+
+    if (options?.status === DepartmentStatusFilter.ARCHIVED) {
+      where.isActive = false;
+    } else if (options?.status === DepartmentStatusFilter.ALL) {
+      // no filter on isActive
+    } else {
+      // Default: ACTIVE
+      where.isActive = true;
+    }
+
+    if (options?.search) {
+      where.OR = [
+        { name: { contains: options.search, mode: 'insensitive' } },
+        { code: { contains: options.search, mode: 'insensitive' } },
+      ];
+    }
+
+    return where;
+  }
 
   async create(data: { code: string; name: string }): Promise<Department> {
     return this.prisma.department.create({
@@ -16,15 +42,9 @@ export class DepartmentRepository {
     skip: number;
     take: number;
     search?: string;
+    status?: DepartmentStatusFilter;
   }): Promise<Department[]> {
-    const where: Prisma.DepartmentWhereInput = options.search
-      ? {
-          OR: [
-            { name: { contains: options.search, mode: 'insensitive' } },
-            { code: { contains: options.search, mode: 'insensitive' } },
-          ],
-        }
-      : {};
+    const where = this.buildWhere(options);
 
     return this.prisma.department.findMany({
       where,
@@ -46,16 +66,11 @@ export class DepartmentRepository {
     });
   }
 
-  async countAll(search?: string): Promise<number> {
-    const where: Prisma.DepartmentWhereInput = search
-      ? {
-          OR: [
-            { name: { contains: search, mode: 'insensitive' } },
-            { code: { contains: search, mode: 'insensitive' } },
-          ],
-        }
-      : {};
-
+  async countAll(options?: {
+    search?: string;
+    status?: DepartmentStatusFilter;
+  }): Promise<number> {
+    const where = this.buildWhere(options);
     return this.prisma.department.count({ where });
   }
 
@@ -85,11 +100,31 @@ export class DepartmentRepository {
 
   async update(
     id: string,
-    data: Partial<{ code: string; name: string }>,
+    data: Partial<{ code: string; name: string; isActive: boolean; archivedAt: Date | null }>,
   ): Promise<Department> {
     return this.prisma.department.update({
       where: { id },
       data,
+    });
+  }
+
+  async archive(id: string): Promise<Department> {
+    return this.prisma.department.update({
+      where: { id },
+      data: {
+        isActive: false,
+        archivedAt: new Date(),
+      },
+    });
+  }
+
+  async restore(id: string): Promise<Department> {
+    return this.prisma.department.update({
+      where: { id },
+      data: {
+        isActive: true,
+        archivedAt: null,
+      },
     });
   }
 

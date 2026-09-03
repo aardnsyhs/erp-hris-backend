@@ -55,6 +55,11 @@ export class PositionAssignmentService {
         `Departemen dengan ID '${dto.departmentId}' tidak ditemukan`,
       );
     }
+    if (!department.isActive) {
+      throw new BadRequestException(
+        `Departemen '${department.name}' sedang non-aktif/diarsipkan dan tidak dapat menerima penugasan posisi baru`,
+      );
+    }
 
     const effectiveFromDate = new Date(dto.effectiveFrom);
     if (isNaN(effectiveFromDate.getTime())) {

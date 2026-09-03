@@ -20,8 +20,16 @@ describe('DepartmentService', () => {
     id: 'dept-uuid-1',
     code: 'ENG',
     name: 'Engineering',
+    isActive: true,
+    archivedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
+  };
+
+  const mockAdminUser = {
+    userId: 'user-admin-1',
+    email: 'admin@hris.local',
+    role: 'HR_ADMIN' as any,
   };
 
   beforeEach(async () => {
@@ -36,6 +44,8 @@ describe('DepartmentService', () => {
       findById: jest.fn(),
       findByCode: jest.fn(),
       update: jest.fn(),
+      archive: jest.fn(),
+      restore: jest.fn(),
       delete: jest.fn(),
       countActiveEmployees: jest.fn().mockResolvedValue(0),
       countTotalEmployees: jest.fn().mockResolvedValue(0),
@@ -282,11 +292,123 @@ describe('DepartmentService', () => {
       departmentRepository.delete = jest.fn().mockRejectedValue(prismaP2003Error);
 
       await expect(departmentService.remove('dept-uuid-1')).rejects.toThrow(
-        BadRequestException,
+        /Tidak dapat menghapus departemen karena masih direferensikan oleh data lain/,
       );
-      await expect(departmentService.remove('dept-uuid-1')).rejects.toThrow(
-        'Tidak dapat menghapus departemen karena masih direferensikan oleh data lain',
+    });
+  });
+
+  describe('archive()', () => {
+    it('13. Sukses mengarsipkan departemen dengan 0 karyawan aktif', async () => {
+      departmentRepository.findById = jest.fn().mockResolvedValue(mockDepartment);
+      departmentRepository.countActiveEmployees = jest.fn().mockResolvedValue(0);
+      const archivedMock = {
+        ...mockDepartment,
+        isActive: false,
+        archivedAt: new Date(),
+      };
+      departmentRepository.archive = jest.fn().mockResolvedValue(archivedMock);
+
+      const result = await departmentService.archive(
+        'dept-uuid-1',
+        { reason: 'Divisi dibubarkan' },
+        mockAdminUser,
       );
+
+      expect(result.isActive).toBe(false);
+      expect(result.archivedAt).toBeDefined();
+      expect(departmentRepository.archive).toHaveBeenCalledWith('dept-uuid-1');
+      expect(auditLogService.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actorId: 'user-admin-1',
+          action: 'ARCHIVE',
+          entity: 'Department',
+          entityId: 'dept-uuid-1',
+          after: expect.objectContaining({
+            isActive: false,
+            archiveReason: 'Divisi dibubarkan',
+          }),
+        }),
+      );
+    });
+
+    it('14. Gagal: mengarsipkan departemen yang sudah berstatus diarsipkan melempar BadRequestException', async () => {
+      departmentRepository.findById = jest.fn().mockResolvedValue({
+        ...mockDepartment,
+        isActive: false,
+        archivedAt: new Date(),
+      });
+
+      await expect(
+        departmentService.archive('dept-uuid-1', undefined, mockAdminUser),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        departmentService.archive('dept-uuid-1', undefined, mockAdminUser),
+      ).rejects.toThrow(/sudah dalam status diarsipkan/);
+      expect(departmentRepository.archive).not.toHaveBeenCalled();
+    });
+
+    it('15. Gagal: mengarsipkan departemen yang masih memiliki karyawan aktif melempar BadRequestException', async () => {
+      departmentRepository.findById = jest.fn().mockResolvedValue(mockDepartment);
+      departmentRepository.countActiveEmployees = jest.fn().mockResolvedValue(3);
+
+      await expect(
+        departmentService.archive('dept-uuid-1', undefined, mockAdminUser),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        departmentService.archive('dept-uuid-1', undefined, mockAdminUser),
+      ).rejects.toThrow(/masih memiliki 3 karyawan aktif/);
+      expect(departmentRepository.archive).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('restore()', () => {
+    it('16. Sukses mengaktifkan kembali departemen yang diarsipkan', async () => {
+      const archivedDept = {
+        ...mockDepartment,
+        isActive: false,
+        archivedAt: new Date('2026-01-01'),
+      };
+      departmentRepository.findById = jest.fn().mockResolvedValue(archivedDept);
+      const restoredMock = {
+        ...mockDepartment,
+        isActive: true,
+        archivedAt: null,
+      };
+      departmentRepository.restore = jest.fn().mockResolvedValue(restoredMock);
+
+      const result = await departmentService.restore(
+        'dept-uuid-1',
+        { reason: 'Inisiatif kembali aktif' },
+        mockAdminUser,
+      );
+
+      expect(result.isActive).toBe(true);
+      expect(result.archivedAt).toBeNull();
+      expect(departmentRepository.restore).toHaveBeenCalledWith('dept-uuid-1');
+      expect(auditLogService.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actorId: 'user-admin-1',
+          action: 'RESTORE',
+          entity: 'Department',
+          entityId: 'dept-uuid-1',
+          after: expect.objectContaining({
+            isActive: true,
+            restoreReason: 'Inisiatif kembali aktif',
+          }),
+        }),
+      );
+    });
+
+    it('17. Gagal: mengaktifkan kembali departemen yang sudah berstatus aktif melempar BadRequestException', async () => {
+      departmentRepository.findById = jest.fn().mockResolvedValue(mockDepartment);
+
+      await expect(
+        departmentService.restore('dept-uuid-1', undefined, mockAdminUser),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        departmentService.restore('dept-uuid-1', undefined, mockAdminUser),
+      ).rejects.toThrow(/sudah dalam status aktif/);
+      expect(departmentRepository.restore).not.toHaveBeenCalled();
     });
   });
 
