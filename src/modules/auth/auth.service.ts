@@ -352,4 +352,15 @@ export class AuthService {
       message: 'Password berhasil diubah',
     };
   }
+
+  /**
+   * Purges expired refresh tokens and revoked tokens older than retention window.
+   * Can be invoked manually by administrative maintenance tasks or scheduled jobs.
+   */
+  async purgeStaleTokens(retentionDays?: number): Promise<{ count: number }> {
+    const cutoff = retentionDays
+      ? new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000)
+      : undefined;
+    return this.authRepository.purgeExpiredOrOldRevokedTokens(cutoff);
+  }
 }

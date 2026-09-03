@@ -1,6 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { User, RefreshToken } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  DEFAULT_REFRESH_TOKEN_REUSE_RETENTION_DAYS,
+  DEFAULT_REFRESH_TOKEN_QUERY_LIMIT,
+  DEFAULT_REFRESH_TOKEN_PURGE_RETENTION_DAYS,
+} from './auth.constants';
+
+export interface FindRefreshTokensOptions {
+  revokedSince?: Date;
+  limit?: number;
+}
 
 @Injectable()
 export class AuthRepository {
@@ -52,10 +62,47 @@ export class AuthRepository {
     });
   }
 
-  async findRefreshTokensByUserId(userId: string): Promise<RefreshToken[]> {
+  async findRefreshTokensByUserId(
+    userId: string,
+    options?: FindRefreshTokensOptions,
+  ): Promise<RefreshToken[]> {
+    const retentionDays = DEFAULT_REFRESH_TOKEN_REUSE_RETENTION_DAYS;
+    const defaultRevokedSince = new Date(
+      Date.now() - retentionDays * 24 * 60 * 60 * 1000,
+    );
+    const revokedSince = options?.revokedSince ?? defaultRevokedSince;
+    const limit = options?.limit ?? DEFAULT_REFRESH_TOKEN_QUERY_LIMIT;
+
     return this.prisma.refreshToken.findMany({
-      where: { userId },
+      where: {
+        userId,
+        OR: [
+          { revokedAt: null },
+          { revokedAt: { gte: revokedSince } },
+        ],
+      },
       orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+  }
+
+  async purgeExpiredOrOldRevokedTokens(
+    retentionCutoff?: Date,
+  ): Promise<{ count: number }> {
+    const defaultCutoff = new Date(
+      Date.now() -
+        DEFAULT_REFRESH_TOKEN_PURGE_RETENTION_DAYS * 24 * 60 * 60 * 1000,
+    );
+    const cutoff = retentionCutoff ?? defaultCutoff;
+    const now = new Date();
+
+    return this.prisma.refreshToken.deleteMany({
+      where: {
+        OR: [
+          { expiresAt: { lt: now } },
+          { revokedAt: { lt: cutoff } },
+        ],
+      },
     });
   }
 

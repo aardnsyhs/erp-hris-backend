@@ -40,6 +40,7 @@ describe('AuthService', () => {
       revokeRefreshToken: jest.fn(),
       revokeAllRefreshTokensByUserId: jest.fn(),
       updatePassword: jest.fn(),
+      purgeExpiredOrOldRevokedTokens: jest.fn(),
     };
 
     jwtService = {
@@ -560,6 +561,40 @@ describe('AuthService', () => {
 
       const result = await authService.login(loginDto);
       expect(result.accessToken).toBe('access-token');
+    });
+  });
+
+  describe('purgeStaleTokens()', () => {
+    it('calls repository purge with undefined cutoff when no days argument is given', async () => {
+      authRepository.purgeExpiredOrOldRevokedTokens = jest
+        .fn()
+        .mockResolvedValue({ count: 12 });
+
+      const result = await authService.purgeStaleTokens();
+
+      expect(result).toEqual({ count: 12 });
+      expect(authRepository.purgeExpiredOrOldRevokedTokens).toHaveBeenCalledWith(
+        undefined,
+      );
+    });
+
+    it('computes cutoff Date when retentionDays argument is provided', async () => {
+      authRepository.purgeExpiredOrOldRevokedTokens = jest
+        .fn()
+        .mockResolvedValue({ count: 3 });
+
+      const before = Date.now();
+      const result = await authService.purgeStaleTokens(14);
+      const after = Date.now();
+
+      expect(result).toEqual({ count: 3 });
+      expect(authRepository.purgeExpiredOrOldRevokedTokens).toHaveBeenCalled();
+
+      const passedCutoff: Date =
+        (authRepository.purgeExpiredOrOldRevokedTokens as jest.Mock).mock.calls[0][0];
+      const expectedCutoffMs = 14 * 24 * 60 * 60 * 1000;
+      expect(passedCutoff.getTime()).toBeGreaterThanOrEqual(before - expectedCutoffMs - 1000);
+      expect(passedCutoff.getTime()).toBeLessThanOrEqual(after - expectedCutoffMs + 1000);
     });
   });
 });
