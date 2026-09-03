@@ -451,4 +451,147 @@ describe('AttendanceService', () => {
       expect(attendanceRepository.findByEmployeeAndDate).not.toHaveBeenCalled();
     });
   });
+
+  describe('P0-A: Timezone & Asia/Jakarta Calendar Consistency', () => {
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('early check-in at 06:30 WIB (23:30 UTC previous day) correctly maps to local Asia/Jakarta date', async () => {
+      // 06:30:00 WIB on 2026-09-04 = 23:30:00 UTC on 2026-09-03
+      const checkInTime = new Date('2026-09-03T23:30:00.000Z');
+      jest.useFakeTimers({ now: checkInTime });
+
+      attendanceRepository.findByEmployeeAndDate = jest.fn().mockResolvedValue(null);
+      attendanceRepository.checkIn = jest.fn().mockImplementation((data) => ({
+        ...mockAttendance,
+        ...data,
+      }));
+
+      const result = await attendanceService.checkIn(employeeUser, { notes: 'Early bird' });
+
+      // Expected normalized date for 2026-09-04 in Asia/Jakarta: 2026-09-04T00:00:00.000Z
+      const expectedAttendanceDate = new Date('2026-09-04T00:00:00.000Z');
+
+      expect(attendanceRepository.findByEmployeeAndDate).toHaveBeenCalledWith(
+        'emp-uuid-1',
+        expectedAttendanceDate,
+      );
+      expect(attendanceRepository.checkIn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          employeeId: 'emp-uuid-1',
+          attendanceDate: expectedAttendanceDate,
+          checkIn: checkInTime,
+          status: AttendanceStatus.PRESENT,
+        }),
+      );
+    });
+
+    it('check-in at 06:30 WIB and check-out at 17:00 WIB on the same local date use identical attendanceDate', async () => {
+      const checkInTime = new Date('2026-09-03T23:30:00.000Z'); // 06:30 WIB on 2026-09-04
+      const checkOutTime = new Date('2026-09-04T10:00:00.000Z'); // 17:00 WIB on 2026-09-04
+      const expectedAttendanceDate = new Date('2026-09-04T00:00:00.000Z');
+
+      // 1. Employee checks in early at 06:30 WIB
+      jest.useFakeTimers({ now: checkInTime });
+      attendanceRepository.findByEmployeeAndDate = jest.fn().mockResolvedValue(null);
+      const earlyRecord = {
+        id: 'att-early-uuid',
+        employeeId: 'emp-uuid-1',
+        attendanceDate: expectedAttendanceDate,
+        checkIn: checkInTime,
+        checkOut: null,
+        status: AttendanceStatus.PRESENT,
+        notes: 'Early check-in',
+        createdAt: checkInTime,
+        updatedAt: checkInTime,
+      };
+      attendanceRepository.checkIn = jest.fn().mockResolvedValue(earlyRecord);
+
+      await attendanceService.checkIn(employeeUser, { notes: 'Early check-in' });
+
+      expect(attendanceRepository.checkIn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          attendanceDate: expectedAttendanceDate,
+        }),
+      );
+
+      // 2. Employee checks out at 17:00 WIB
+      jest.useFakeTimers({ now: checkOutTime });
+      attendanceRepository.findByEmployeeAndDate = jest.fn().mockImplementation((empId, date) => {
+        if (date.getTime() === expectedAttendanceDate.getTime()) {
+          return Promise.resolve(earlyRecord);
+        }
+        return Promise.resolve(null);
+      });
+      attendanceRepository.checkOut = jest.fn().mockImplementation((id, time, notes) => ({
+        ...earlyRecord,
+        checkOut: time,
+        notes,
+      }));
+
+      const checkOutResult = await attendanceService.checkOut(employeeUser, { notes: 'Done for the day' });
+
+      expect(attendanceRepository.findByEmployeeAndDate).toHaveBeenCalledWith(
+        'emp-uuid-1',
+        expectedAttendanceDate,
+      );
+      expect(checkOutResult.checkOut).toEqual(checkOutTime);
+    });
+
+    it('regression: check-in at 09:10 WIB (02:10 UTC) and check-out at 17:30 WIB (10:30 UTC) function normally on same date', async () => {
+      const checkInTime = new Date('2026-09-04T02:10:00.000Z'); // 09:10 WIB
+      const checkOutTime = new Date('2026-09-04T10:30:00.000Z'); // 17:30 WIB
+      const expectedAttendanceDate = new Date('2026-09-04T00:00:00.000Z');
+
+      // Check-in
+      jest.useFakeTimers({ now: checkInTime });
+      attendanceRepository.findByEmployeeAndDate = jest.fn().mockResolvedValue(null);
+      attendanceRepository.checkIn = jest.fn().mockImplementation((data) => ({
+        id: 'att-normal-uuid',
+        ...data,
+      }));
+
+      await attendanceService.checkIn(employeeUser, {});
+
+      expect(attendanceRepository.checkIn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          attendanceDate: expectedAttendanceDate,
+          status: AttendanceStatus.PRESENT,
+        }),
+      );
+
+      // Check-out
+      jest.useFakeTimers({ now: checkOutTime });
+      attendanceRepository.findByEmployeeAndDate = jest.fn().mockResolvedValue({
+        id: 'att-normal-uuid',
+        employeeId: 'emp-uuid-1',
+        attendanceDate: expectedAttendanceDate,
+        checkIn: checkInTime,
+        checkOut: null,
+      });
+      attendanceRepository.checkOut = jest.fn().mockImplementation((id, time) => ({
+        id,
+        checkOut: time,
+      }));
+
+      const checkOutRes = await attendanceService.checkOut(employeeUser, {});
+      expect(checkOutRes.checkOut).toEqual(checkOutTime);
+    });
+
+    it('getTodayAttendance returns today record for early morning user (before 07:00 WIB)', async () => {
+      const earlyMorning = new Date('2026-09-03T23:45:00.000Z'); // 06:45 WIB Sep 4
+      jest.useFakeTimers({ now: earlyMorning });
+
+      const expectedAttendanceDate = new Date('2026-09-04T00:00:00.000Z');
+      attendanceRepository.findByEmployeeAndDate = jest.fn().mockResolvedValue(mockAttendance);
+
+      await attendanceService.getTodayAttendance(employeeUser);
+
+      expect(attendanceRepository.findByEmployeeAndDate).toHaveBeenCalledWith(
+        'emp-uuid-1',
+        expectedAttendanceDate,
+      );
+    });
+  });
 });

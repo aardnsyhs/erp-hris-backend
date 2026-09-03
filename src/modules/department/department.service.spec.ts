@@ -4,6 +4,7 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { DepartmentService } from './department.service';
 import { DepartmentRepository } from './department.repository';
 import { CreateDepartmentDto } from './dto/create-department.dto';
@@ -36,7 +37,9 @@ describe('DepartmentService', () => {
       findByCode: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
-      countActiveEmployees: jest.fn(),
+      countActiveEmployees: jest.fn().mockResolvedValue(0),
+      countTotalEmployees: jest.fn().mockResolvedValue(0),
+      countPositionAssignments: jest.fn().mockResolvedValue(0),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -173,11 +176,17 @@ describe('DepartmentService', () => {
   });
 
   describe('remove()', () => {
-    it('8. Sukses menghapus departemen jika tidak ada karyawan aktif (count = 0)', async () => {
+    it('8. Sukses menghapus departemen jika tidak ada relasi karyawan atau posisi (count = 0)', async () => {
       departmentRepository.findById = jest
         .fn()
         .mockResolvedValue(mockDepartment);
       departmentRepository.countActiveEmployees = jest
+        .fn()
+        .mockResolvedValue(0);
+      departmentRepository.countTotalEmployees = jest
+        .fn()
+        .mockResolvedValue(0);
+      departmentRepository.countPositionAssignments = jest
         .fn()
         .mockResolvedValue(0);
       departmentRepository.delete = jest.fn().mockResolvedValue(mockDepartment);
@@ -199,7 +208,85 @@ describe('DepartmentService', () => {
       await expect(departmentService.remove('dept-uuid-1')).rejects.toThrow(
         BadRequestException,
       );
+      await expect(departmentService.remove('dept-uuid-1')).rejects.toThrow(
+        /masih memiliki 5 karyawan aktif/,
+      );
       expect(departmentRepository.delete).not.toHaveBeenCalled();
+    });
+
+    it('10. Gagal: menolak penghapusan jika ada karyawan inactive / terminated / soft-deleted melempar BadRequestException', async () => {
+      departmentRepository.findById = jest
+        .fn()
+        .mockResolvedValue(mockDepartment);
+      departmentRepository.countActiveEmployees = jest
+        .fn()
+        .mockResolvedValue(0);
+      departmentRepository.countTotalEmployees = jest
+        .fn()
+        .mockResolvedValue(3); // 3 inactive/terminated employees
+
+      await expect(departmentService.remove('dept-uuid-1')).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(departmentService.remove('dept-uuid-1')).rejects.toThrow(
+        /masih memiliki riwayat 3 data karyawan \(non-aktif\/terhapus\)/,
+      );
+      expect(departmentRepository.delete).not.toHaveBeenCalled();
+    });
+
+    it('11. Gagal: menolak penghapusan jika ada riwayat penugasan posisi (position assignment) melempar BadRequestException', async () => {
+      departmentRepository.findById = jest
+        .fn()
+        .mockResolvedValue(mockDepartment);
+      departmentRepository.countActiveEmployees = jest
+        .fn()
+        .mockResolvedValue(0);
+      departmentRepository.countTotalEmployees = jest
+        .fn()
+        .mockResolvedValue(0);
+      departmentRepository.countPositionAssignments = jest
+        .fn()
+        .mockResolvedValue(2); // 2 position assignments
+
+      await expect(departmentService.remove('dept-uuid-1')).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(departmentService.remove('dept-uuid-1')).rejects.toThrow(
+        /masih memiliki 2 riwayat penugasan posisi/,
+      );
+      expect(departmentRepository.delete).not.toHaveBeenCalled();
+    });
+
+    it('12. Gagal: Prisma P2003 Foreign Key constraint error tertangkap dan dikonversi menjadi BadRequestException (bukan HTTP 500)', async () => {
+      departmentRepository.findById = jest
+        .fn()
+        .mockResolvedValue(mockDepartment);
+      departmentRepository.countActiveEmployees = jest
+        .fn()
+        .mockResolvedValue(0);
+      departmentRepository.countTotalEmployees = jest
+        .fn()
+        .mockResolvedValue(0);
+      departmentRepository.countPositionAssignments = jest
+        .fn()
+        .mockResolvedValue(0);
+
+      // Simulate unexpected concurrent foreign key insertion
+      const prismaP2003Error = new Prisma.PrismaClientKnownRequestError(
+        'Foreign key constraint failed on the field: `department_id`',
+        {
+          code: 'P2003',
+          clientVersion: '5.x',
+        },
+      );
+      departmentRepository.delete = jest.fn().mockRejectedValue(prismaP2003Error);
+
+      await expect(departmentService.remove('dept-uuid-1')).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(departmentService.remove('dept-uuid-1')).rejects.toThrow(
+        'Tidak dapat menghapus departemen karena masih direferensikan oleh data lain',
+      );
     });
   });
 

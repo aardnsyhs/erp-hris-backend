@@ -108,4 +108,20 @@ export class DepartmentRepository {
       },
     });
   }
+
+  async countTotalEmployees(departmentId: string): Promise<number> {
+    return this.prisma.employee.count({
+      where: {
+        departmentId,
+      },
+    });
+  }
+
+  async countPositionAssignments(departmentId: string): Promise<number> {
+    return this.prisma.employeePositionAssignment.count({
+      where: {
+        departmentId,
+      },
+    });
+  }
 }

@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { DepartmentRepository } from './department.repository';
 import { CreateDepartmentDto } from './dto/create-department.dto';
 import { UpdateDepartmentDto } from './dto/update-department.dto';
@@ -117,6 +118,7 @@ export class DepartmentService {
   async remove(id: string) {
     const department = await this.findById(id);
 
+    // 1. Validasi karyawan aktif
     const activeEmployeesCount =
       await this.departmentRepository.countActiveEmployees(id);
     if (activeEmployeesCount > 0) {
@@ -125,7 +127,38 @@ export class DepartmentService {
       );
     }
 
-    await this.departmentRepository.delete(id);
+    // 2. Validasi seluruh data karyawan terkait (inactive / terminated / soft-deleted)
+    const totalEmployeesCount =
+      await this.departmentRepository.countTotalEmployees(id);
+    if (totalEmployeesCount > 0) {
+      throw new BadRequestException(
+        `Tidak dapat menghapus departemen karena masih memiliki riwayat ${totalEmployeesCount} data karyawan (non-aktif/terhapus)`,
+      );
+    }
+
+    // 3. Validasi riwayat penugasan posisi (position assignments)
+    const positionAssignmentsCount =
+      await this.departmentRepository.countPositionAssignments(id);
+    if (positionAssignmentsCount > 0) {
+      throw new BadRequestException(
+        `Tidak dapat menghapus departemen karena masih memiliki ${positionAssignmentsCount} riwayat penugasan posisi`,
+      );
+    }
+
+    // 4. Safety net: tangkap Prisma foreign key error jika terjadi konkurensi data
+    try {
+      await this.departmentRepository.delete(id);
+    } catch (error: unknown) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2003'
+      ) {
+        throw new BadRequestException(
+          'Tidak dapat menghapus departemen karena masih direferensikan oleh data lain',
+        );
+      }
+      throw error;
+    }
 
     await this.auditLogService.record({
       action: 'DELETE',

@@ -12,6 +12,7 @@ import { CheckOutDto } from './dto/check-out.dto';
 import { AttendanceQueryDto } from './dto/attendance-query.dto';
 import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
 import {
+  getWibDate,
   getWibTimeParts,
   parseTimeString,
 } from '../../common/utils/timezone.util';
@@ -24,10 +25,7 @@ export class AttendanceService {
   ) {}
 
   private getTodayUtcDate(): Date {
-    const now = new Date();
-    return new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
-    );
+    return getWibDate(new Date());
   }
 
   async checkIn(currentUser: AuthenticatedUser, checkInDto: CheckInDto) {
