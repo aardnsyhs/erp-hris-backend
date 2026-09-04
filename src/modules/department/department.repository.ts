@@ -211,4 +211,36 @@ export class DepartmentRepository {
       },
     });
   }
+
+  async countChildren(parentId: string): Promise<number> {
+    return this.prisma.department.count({
+      where: {
+        parentId,
+      },
+    });
+  }
+
+  async findAllMinimal(tx?: Prisma.TransactionClient): Promise<
+    Array<{
+      id: string;
+      code: string;
+      name: string;
+      parentId: string | null;
+      level: number;
+      isActive: boolean;
+    }>
+  > {
+    const client = tx ?? this.prisma;
+    return client.department.findMany({
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        parentId: true,
+        level: true,
+        isActive: true,
+      },
+      orderBy: [{ level: 'asc' }, { name: 'asc' }],
+    });
+  }
 }

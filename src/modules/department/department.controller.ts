@@ -25,6 +25,7 @@ import { DepartmentQueryDto } from './dto/department-query.dto';
 import { DepartmentTreeQueryDto } from './dto/department-tree-query.dto';
 import { ArchiveDepartmentDto } from './dto/archive-department.dto';
 import { RestoreDepartmentDto } from './dto/restore-department.dto';
+import { ReparentDepartmentDto } from './dto/reparent-department.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
@@ -108,6 +109,39 @@ export class DepartmentController {
     @Body() updateDepartmentDto: UpdateDepartmentDto,
   ) {
     return this.departmentService.update(id, updateDepartmentDto);
+  }
+
+  @Roles(UserRole.HR_ADMIN)
+  @Patch(':id/parent')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Pindahkan departemen induk / reparenting (HR_ADMIN only)',
+    description:
+      'Memindahkan departemen ke parent baru atau mempromosikannya menjadi root node (parentId: null). Memvalidasi siklus, status aktif parent, dan batas kedalaman maksimum 4 level (level 0 hingga 3).',
+  })
+  @ApiParam({ name: 'id', description: 'UUID departemen yang akan dipindahkan' })
+  @ApiResponse({ status: 200, description: 'Departemen berhasil dipindahkan' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Validasi hierarki gagal (self-parent, cycle, parent terarsip, kedalaman > 3)',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden: Hanya HR_ADMIN' })
+  @ApiResponse({
+    status: 404,
+    description: 'Departemen target atau candidate parent tidak ditemukan',
+  })
+  async reparent(
+    @Param('id') id: string,
+    @Body() reparentDepartmentDto: ReparentDepartmentDto,
+    @CurrentUser() currentUser: AuthenticatedUser,
+  ) {
+    return this.departmentService.reparentDepartment(
+      id,
+      reparentDepartmentDto,
+      currentUser,
+    );
   }
 
   @Roles(UserRole.HR_ADMIN)

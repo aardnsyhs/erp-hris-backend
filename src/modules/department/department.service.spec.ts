@@ -10,6 +10,7 @@ import { DepartmentRepository } from './department.repository';
 import { CreateDepartmentDto } from './dto/create-department.dto';
 import { UpdateDepartmentDto } from './dto/update-department.dto';
 import { AuditLogService } from '../audit-log/audit-log.service';
+import { PrismaService } from '../../prisma/prisma.service';
 
 describe('DepartmentService', () => {
   let departmentService: DepartmentService;
@@ -34,16 +35,40 @@ describe('DepartmentService', () => {
     role: 'HR_ADMIN' as any,
   };
 
+  let prisma: any;
+  let mockTx: any;
+
   beforeEach(async () => {
     auditLogService = {
       record: jest.fn().mockResolvedValue({ id: 'audit-1' }),
+    };
+
+    mockTx = {
+      department: {
+        findMany: jest.fn(),
+        findUnique: jest.fn(),
+        update: jest.fn(),
+        updateMany: jest.fn(),
+      },
+    };
+
+    prisma = {
+      $transaction: jest.fn(async (cb) => cb(mockTx)),
+      department: {
+        findMany: jest.fn(),
+        findUnique: jest.fn(),
+        update: jest.fn(),
+        updateMany: jest.fn(),
+      },
     };
 
     departmentRepository = {
       create: jest.fn(),
       findAll: jest.fn(),
       findAllForTree: jest.fn(),
+      findAllMinimal: jest.fn().mockResolvedValue([]),
       countAll: jest.fn(),
+      countChildren: jest.fn().mockResolvedValue(0),
       findById: jest.fn(),
       findByCode: jest.fn(),
       update: jest.fn(),
@@ -60,6 +85,7 @@ describe('DepartmentService', () => {
         DepartmentService,
         { provide: DepartmentRepository, useValue: departmentRepository },
         { provide: AuditLogService, useValue: auditLogService },
+        { provide: PrismaService, useValue: prisma },
       ],
     }).compile();
 
@@ -727,6 +753,476 @@ describe('DepartmentService', () => {
       });
 
       expect(result).toEqual(mockDepartment);
+    });
+  });
+
+  describe('Sub-Milestone 4A.2: Full Ancestor-Chain Validation in create()', () => {
+    it('sukses membuat child jika parent dan seluruh leluhur berstatus aktif', async () => {
+      const rootDept = { id: 'root-1', code: 'ROOT', name: 'Root', parentId: null, level: 0, isActive: true };
+      const divDept = { id: 'div-1', code: 'DIV', name: 'Division', parentId: 'root-1', level: 1, isActive: true };
+
+      departmentRepository.findByCode = jest.fn().mockResolvedValue(null);
+      departmentRepository.findById = jest.fn().mockResolvedValue(divDept);
+      departmentRepository.findAllMinimal = jest.fn().mockResolvedValue([rootDept, divDept]);
+      departmentRepository.create = jest.fn().mockResolvedValue({
+        id: 'child-1',
+        code: 'CHILD',
+        name: 'Child Dept',
+        parentId: 'div-1',
+        level: 2,
+      });
+
+      const result = await departmentService.create({
+        code: 'CHILD',
+        name: 'Child Dept',
+        parentId: 'div-1',
+      });
+
+      expect(result.level).toBe(2);
+      expect(departmentRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ parentId: 'div-1', level: 2 }),
+      );
+    });
+
+    it('gagal membuat child jika terdapat ancestor (kakek/grandparent) yang terarsip', async () => {
+      const archivedRoot = { id: 'root-1', code: 'ROOT', name: 'Root Corp', parentId: null, level: 0, isActive: false };
+      const activeDiv = { id: 'div-1', code: 'DIV', name: 'Tech Div', parentId: 'root-1', level: 1, isActive: true };
+
+      departmentRepository.findByCode = jest.fn().mockResolvedValue(null);
+      departmentRepository.findById = jest.fn().mockResolvedValue(activeDiv);
+      departmentRepository.findAllMinimal = jest.fn().mockResolvedValue([archivedRoot, activeDiv]);
+
+      await expect(
+        departmentService.create({
+          code: 'CHILD',
+          name: 'Child Dept',
+          parentId: 'div-1',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('gagal membuat child jika rantai leluhur memiliki siklus sirkular korup', async () => {
+      const nodeA = { id: 'node-a', code: 'A', name: 'Node A', parentId: 'node-b', level: 1, isActive: true };
+      const nodeB = { id: 'node-b', code: 'B', name: 'Node B', parentId: 'node-a', level: 0, isActive: true };
+
+      departmentRepository.findByCode = jest.fn().mockResolvedValue(null);
+      departmentRepository.findById = jest.fn().mockResolvedValue(nodeA);
+      departmentRepository.findAllMinimal = jest.fn().mockResolvedValue([nodeA, nodeB]);
+
+      await expect(
+        departmentService.create({
+          code: 'CHILD',
+          name: 'Child Dept',
+          parentId: 'node-a',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('Sub-Milestone 4A.2: Deep Descendant Guard in archive()', () => {
+    it('gagal mengarsipkan departemen jika masih memiliki direct child yang aktif', async () => {
+      const parentDept = { id: 'parent-1', name: 'Parent', isActive: true };
+      const childDept = { id: 'child-1', name: 'Child', parentId: 'parent-1', level: 1, isActive: true };
+
+      departmentRepository.findById = jest.fn().mockResolvedValue(parentDept);
+      departmentRepository.findAllMinimal = jest.fn().mockResolvedValue([parentDept, childDept]);
+
+      await expect(departmentService.archive('parent-1')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(departmentRepository.archive).not.toHaveBeenCalled();
+    });
+
+    it('gagal mengarsipkan departemen jika memiliki grandchild aktif meskipun direct child terarsip', async () => {
+      const rootDept = { id: 'root-1', name: 'Root', isActive: true };
+      const childDept = { id: 'child-1', name: 'Child', parentId: 'root-1', level: 1, isActive: false };
+      const grandChild = { id: 'gc-1', name: 'Grandchild', parentId: 'child-1', level: 2, isActive: true };
+
+      departmentRepository.findById = jest.fn().mockResolvedValue(rootDept);
+      departmentRepository.findAllMinimal = jest.fn().mockResolvedValue([rootDept, childDept, grandChild]);
+
+      await expect(departmentService.archive('root-1')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(departmentRepository.archive).not.toHaveBeenCalled();
+    });
+
+    it('sukses mengarsipkan departemen jika seluruh descendant sudah berstatus terarsip dan 0 karyawan aktif', async () => {
+      const parentDept = { id: 'parent-1', name: 'Parent', isActive: true };
+      const childDept = { id: 'child-1', name: 'Child', parentId: 'parent-1', level: 1, isActive: false };
+
+      departmentRepository.findById = jest.fn().mockResolvedValue(parentDept);
+      departmentRepository.findAllMinimal = jest.fn().mockResolvedValue([parentDept, childDept]);
+      departmentRepository.countActiveEmployees = jest.fn().mockResolvedValue(0);
+      departmentRepository.archive = jest.fn().mockResolvedValue({ ...parentDept, isActive: false });
+
+      const result = await departmentService.archive('parent-1');
+
+      expect(result.isActive).toBe(false);
+      expect(departmentRepository.archive).toHaveBeenCalledWith('parent-1');
+      expect(auditLogService.record).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'ARCHIVE', entityId: 'parent-1' }),
+      );
+    });
+  });
+
+  describe('Sub-Milestone 4A.2: Deep Ancestor Guard in restore()', () => {
+    it('gagal mengaktifkan kembali jika direct parent masih dalam status terarsip', async () => {
+      const archivedChild = { id: 'child-1', name: 'Child', parentId: 'parent-1', level: 1, isActive: false };
+      const archivedParent = { id: 'parent-1', name: 'Parent', parentId: null, level: 0, isActive: false };
+
+      departmentRepository.findById = jest.fn().mockResolvedValue(archivedChild);
+      departmentRepository.findAllMinimal = jest.fn().mockResolvedValue([archivedChild, archivedParent]);
+
+      await expect(departmentService.restore('child-1')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(departmentRepository.restore).not.toHaveBeenCalled();
+    });
+
+    it('gagal mengaktifkan kembali jika grandparent terarsip meskipun direct parent aktif', async () => {
+      const archivedChild = { id: 'child-1', name: 'Child', parentId: 'div-1', level: 2, isActive: false };
+      const activeDiv = { id: 'div-1', name: 'Div', parentId: 'root-1', level: 1, isActive: true };
+      const archivedRoot = { id: 'root-1', name: 'Root', parentId: null, level: 0, isActive: false };
+
+      departmentRepository.findById = jest.fn().mockResolvedValue(archivedChild);
+      departmentRepository.findAllMinimal = jest.fn().mockResolvedValue([
+        archivedChild,
+        activeDiv,
+        archivedRoot,
+      ]);
+
+      await expect(departmentService.restore('child-1')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(departmentRepository.restore).not.toHaveBeenCalled();
+    });
+
+    it('sukses mengaktifkan kembali child jika seluruh leluhur berstatus aktif', async () => {
+      const archivedChild = { id: 'child-1', name: 'Child', parentId: 'div-1', level: 2, isActive: false };
+      const activeDiv = { id: 'div-1', name: 'Div', parentId: 'root-1', level: 1, isActive: true };
+      const activeRoot = { id: 'root-1', name: 'Root', parentId: null, level: 0, isActive: true };
+
+      departmentRepository.findById = jest.fn().mockResolvedValue(archivedChild);
+      departmentRepository.findAllMinimal = jest.fn().mockResolvedValue([
+        archivedChild,
+        activeDiv,
+        activeRoot,
+      ]);
+      departmentRepository.restore = jest.fn().mockResolvedValue({ ...archivedChild, isActive: true });
+
+      const result = await departmentService.restore('child-1');
+
+      expect(result.isActive).toBe(true);
+      expect(departmentRepository.restore).toHaveBeenCalledWith('child-1');
+    });
+
+    it('sukses mengaktifkan kembali root node tanpa memvalidasi parentId', async () => {
+      const archivedRoot = { id: 'root-1', name: 'Root', parentId: null, level: 0, isActive: false };
+
+      departmentRepository.findById = jest.fn().mockResolvedValue(archivedRoot);
+      departmentRepository.restore = jest.fn().mockResolvedValue({ ...archivedRoot, isActive: true });
+
+      const result = await departmentService.restore('root-1');
+
+      expect(result.isActive).toBe(true);
+      expect(departmentRepository.findAllMinimal).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Sub-Milestone 4A.2: Structural Guard in remove()', () => {
+    it('gagal menghapus departemen jika masih memiliki direct child', async () => {
+      departmentRepository.findById = jest.fn().mockResolvedValue(mockDepartment);
+      departmentRepository.countChildren = jest.fn().mockResolvedValue(2);
+
+      await expect(departmentService.remove('dept-uuid-1')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(departmentRepository.countChildren).toHaveBeenCalledWith('dept-uuid-1');
+      expect(departmentRepository.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Sub-Milestone 4A.2: Reparenting Engine in reparentDepartment()', () => {
+    const rootNode = {
+      id: 'root-1',
+      code: 'ROOT',
+      name: 'Root Company',
+      parentId: null,
+      level: 0,
+      isActive: true,
+    };
+    const divNode = {
+      id: 'div-1',
+      code: 'DIV',
+      name: 'Division 1',
+      parentId: 'root-1',
+      level: 1,
+      isActive: true,
+    };
+    const deptNode = {
+      id: 'dept-1',
+      code: 'DEPT',
+      name: 'Department 1',
+      parentId: 'div-1',
+      level: 2,
+      isActive: true,
+    };
+    const unitNode = {
+      id: 'unit-1',
+      code: 'UNIT',
+      name: 'Unit 1',
+      parentId: 'dept-1',
+      level: 3,
+      isActive: true,
+    };
+    const div2Node = {
+      id: 'div-2',
+      code: 'DIV2',
+      name: 'Division 2',
+      parentId: 'root-1',
+      level: 1,
+      isActive: true,
+    };
+
+    it('gagal jika target departemen tidak ditemukan melempar NotFoundException', async () => {
+      mockTx.department.findMany.mockResolvedValue([rootNode, divNode]);
+
+      await expect(
+        departmentService.reparentDepartment(
+          'non-existent-id',
+          { parentId: 'root-1' },
+          mockAdminUser,
+        ),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('no-op reparenting: jika parentId sama, kembalikan target tanpa memanggil update atau auditLog', async () => {
+      mockTx.department.findMany.mockResolvedValue([rootNode, divNode]);
+      mockTx.department.findUnique.mockResolvedValue(divNode);
+
+      const result = await departmentService.reparentDepartment(
+        'div-1',
+        { parentId: 'root-1' },
+        mockAdminUser,
+      );
+
+      expect(result).toEqual(divNode);
+      expect(mockTx.department.update).not.toHaveBeenCalled();
+      expect(mockTx.department.updateMany).not.toHaveBeenCalled();
+      expect(auditLogService.record).not.toHaveBeenCalled();
+    });
+
+    it('gagal jika mencoba self-parenting (newParentId === id) melempar BadRequestException', async () => {
+      mockTx.department.findMany.mockResolvedValue([rootNode, divNode]);
+
+      await expect(
+        departmentService.reparentDepartment(
+          'div-1',
+          { parentId: 'div-1' },
+          mockAdminUser,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('gagal jika candidate parent tidak ditemukan melempar NotFoundException', async () => {
+      mockTx.department.findMany.mockResolvedValue([rootNode, divNode]);
+
+      await expect(
+        departmentService.reparentDepartment(
+          'div-1',
+          { parentId: 'ghost-parent-id' },
+          mockAdminUser,
+        ),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('gagal jika target aktif dipindahkan ke candidate parent yang terarsip melempar BadRequestException', async () => {
+      const archivedDiv = { ...div2Node, isActive: false };
+      mockTx.department.findMany.mockResolvedValue([rootNode, divNode, archivedDiv]);
+
+      await expect(
+        departmentService.reparentDepartment(
+          'div-1',
+          { parentId: 'div-2' },
+          mockAdminUser,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('sukses jika target terarsip dipindahkan ke parent yang aktif (target tetap terarsip)', async () => {
+      const archivedDept = { ...deptNode, isActive: false };
+      mockTx.department.findMany.mockResolvedValue([rootNode, divNode, archivedDept, div2Node]);
+      mockTx.department.update.mockResolvedValue({
+        ...archivedDept,
+        parentId: 'div-2',
+        level: 2,
+      });
+
+      const result = await departmentService.reparentDepartment(
+        'dept-1',
+        { parentId: 'div-2' },
+        mockAdminUser,
+      );
+
+      expect(result).toBeDefined();
+      expect(result!.parentId).toBe('div-2');
+      expect(mockTx.department.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'dept-1' },
+          data: { parentId: 'div-2', level: 2 },
+        }),
+      );
+    });
+
+    it('gagal jika siklus terdeteksi langsung: memindahkan node ke direct child-nya', async () => {
+      mockTx.department.findMany.mockResolvedValue([rootNode, divNode, deptNode]);
+
+      await expect(
+        departmentService.reparentDepartment(
+          'div-1',
+          { parentId: 'dept-1' }, // dept-1 is child of div-1
+          mockAdminUser,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('gagal jika siklus terdeteksi tidak langsung: memindahkan root ke cucunya', async () => {
+      mockTx.department.findMany.mockResolvedValue([rootNode, divNode, deptNode, unitNode]);
+
+      await expect(
+        departmentService.reparentDepartment(
+          'root-1',
+          { parentId: 'unit-1' }, // unit-1 is grandchild of root-1
+          mockAdminUser,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('gagal jika pemindahan menyebabkan subtree melampaui level 3 (max depth 4)', async () => {
+      // dept-1 memiliki unit-1 di bawahnya (subtree height = 1)
+      // Jika dept-1 dipindahkan ke unit lain di level 3: newTargetLevel = 3 + 1 = 4 > 3 -> reject!
+      const level3Dept = { id: 'lvl3-dept', parentId: 'dept-other', level: 3, isActive: true };
+      mockTx.department.findMany.mockResolvedValue([
+        rootNode,
+        divNode,
+        deptNode,
+        unitNode,
+        level3Dept,
+      ]);
+
+      await expect(
+        departmentService.reparentDepartment(
+          'dept-1',
+          { parentId: 'lvl3-dept' },
+          mockAdminUser,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('sukses memindahkan leaf node ke parent baru: level terupdate dan updateMany tidak dipanggil', async () => {
+      mockTx.department.findMany.mockResolvedValue([rootNode, divNode, deptNode, unitNode, div2Node]);
+      const updatedLeaf = { ...unitNode, parentId: 'div-2', level: 2 };
+      mockTx.department.update.mockResolvedValue(updatedLeaf);
+
+      const result = await departmentService.reparentDepartment(
+        'unit-1',
+        { parentId: 'div-2', reason: 'Pindah ke Div 2' },
+        mockAdminUser,
+      );
+
+      expect(result).toBeDefined();
+      expect(result!.parentId).toBe('div-2');
+      expect(result!.level).toBe(2);
+      expect(mockTx.department.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'unit-1' },
+          data: { parentId: 'div-2', level: 2 },
+        }),
+      );
+      // unit-1 tidak memiliki descendant, jadi updateMany tidak dipanggil
+      expect(mockTx.department.updateMany).not.toHaveBeenCalled();
+      expect(auditLogService.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'REPARENT_DEPARTMENT',
+          entityId: 'unit-1',
+          before: { parentId: 'dept-1', level: 3 },
+          after: expect.objectContaining({
+            parentId: 'div-2',
+            level: 2,
+            reason: 'Pindah ke Div 2',
+            descendantCount: 0,
+          }),
+        }),
+        mockTx,
+      );
+    });
+
+    it('sukses memindahkan subtree: seluruh descendants di-update dalam SATU updateMany query (Zero N+1)', async () => {
+      // Pindahkan div-1 (membawahi dept-1 dan unit-1) dari root-1 (level 0) ke div2Node (level 1)
+      // oldLevel div-1 = 1, newTargetLevel = 1 + 1 = 2 -> delta = +1
+      // descendants: dept-1 (old 2 -> new 3), unit-1 (old 3 -> new 4? wait, 2 + 2 = 4 > 3 akan reject!)
+      // Mari pindahkan dept-1 (membawahi unit-1) dari div-1 (level 1) menjadi Root (level 0):
+      // oldLevel dept-1 = 2 -> newLevel = 0, delta = -2
+      // descendant unit-1: old 3 -> new 1. Max depth: 0 + 1 = 1 <= 3 (Valid!)
+      mockTx.department.findMany.mockResolvedValue([rootNode, divNode, deptNode, unitNode]);
+      const updatedDept = { ...deptNode, parentId: null, level: 0 };
+      mockTx.department.update.mockResolvedValue(updatedDept);
+      mockTx.department.updateMany.mockResolvedValue({ count: 1 });
+
+      const result = await departmentService.reparentDepartment(
+        'dept-1',
+        { parentId: null }, // Promote to root
+        mockAdminUser,
+      );
+
+      expect(result).toBeDefined();
+      expect(result!.parentId).toBeNull();
+      expect(result!.level).toBe(0);
+
+      // Pastikan target diupdate
+      expect(mockTx.department.update).toHaveBeenCalledTimes(1);
+      expect(mockTx.department.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'dept-1' },
+          data: { parentId: null, level: 0 },
+        }),
+      );
+
+      // Pastikan descendants diupdate BUKAN per descendant, melainkan SATU updateMany query
+      expect(mockTx.department.updateMany).toHaveBeenCalledTimes(1);
+      expect(mockTx.department.updateMany).toHaveBeenCalledWith({
+        where: { id: { in: ['unit-1'] } },
+        data: { level: { increment: -2 } },
+      });
+
+      // Audit log tercatat dengan tx yang sama
+      expect(auditLogService.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'REPARENT_DEPARTMENT',
+          entityId: 'dept-1',
+          before: { parentId: 'div-1', level: 2 },
+          after: expect.objectContaining({
+            parentId: null,
+            level: 0,
+            descendantCount: 1,
+          }),
+        }),
+        mockTx,
+      );
+    });
+
+    it('rollback behavior: jika update database gagal di dalam transaksi, exception diteruskan ke pemanggil', async () => {
+      mockTx.department.findMany.mockResolvedValue([rootNode, divNode, div2Node]);
+      mockTx.department.update.mockRejectedValue(new Error('Database lock error'));
+
+      await expect(
+        departmentService.reparentDepartment(
+          'div-1',
+          { parentId: 'div-2' },
+          mockAdminUser,
+        ),
+      ).rejects.toThrow('Database lock error');
     });
   });
 });

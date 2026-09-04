@@ -18,6 +18,7 @@ describe('DepartmentController', () => {
     archive: jest.Mock;
     restore: jest.Mock;
     remove: jest.Mock;
+    reparentDepartment: jest.Mock;
   };
   let reflector: Reflector;
 
@@ -48,6 +49,7 @@ describe('DepartmentController', () => {
       archive: jest.fn(),
       restore: jest.fn(),
       remove: jest.fn(),
+      reparentDepartment: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -162,6 +164,33 @@ describe('DepartmentController', () => {
 
       expect(result).toBe(deleteResponse);
       expect(service.remove).toHaveBeenCalledWith('dept-1');
+    });
+  });
+
+  describe('reparent()', () => {
+    it('memiliki proteksi role HR_ADMIN dan mendelegasikan ke service.reparentDepartment', async () => {
+      const roles = reflector.get<UserRole[]>(ROLES_KEY, controller.reparent);
+      expect(roles).toEqual([UserRole.HR_ADMIN]);
+
+      const reparentedMock = {
+        ...mockDepartment,
+        parentId: 'parent-dept-id',
+        level: 1,
+      };
+      service.reparentDepartment.mockResolvedValue(reparentedMock as any);
+
+      const dto = {
+        parentId: 'parent-dept-id',
+        reason: 'Restrukturisasi Q3',
+      };
+      const result = await controller.reparent('dept-1', dto, mockAdminUser);
+
+      expect(result).toBe(reparentedMock);
+      expect(service.reparentDepartment).toHaveBeenCalledWith(
+        'dept-1',
+        dto,
+        mockAdminUser,
+      );
     });
   });
 });

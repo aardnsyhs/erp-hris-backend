@@ -228,5 +228,72 @@ describe('DepartmentRepository', () => {
       });
     });
   });
+
+  describe('countChildren()', () => {
+    it('menghitung jumlah departemen yang memiliki parentId tertentu', async () => {
+      prisma.department.count.mockResolvedValue(3);
+
+      const result = await repository.countChildren('parent-1');
+
+      expect(result).toBe(3);
+      expect(prisma.department.count).toHaveBeenCalledWith({
+        where: { parentId: 'parent-1' },
+      });
+    });
+  });
+
+  describe('findAllMinimal()', () => {
+    it('mengambil field minimal departemen untuk validasi graf hierarki', async () => {
+      const mockMinimal = [
+        {
+          id: 'dept-1',
+          code: 'ENG',
+          name: 'Engineering',
+          parentId: null,
+          level: 0,
+          isActive: true,
+        },
+      ];
+      prisma.department.findMany.mockResolvedValue(mockMinimal);
+
+      const result = await repository.findAllMinimal();
+
+      expect(result).toBe(mockMinimal);
+      expect(prisma.department.findMany).toHaveBeenCalledWith({
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          parentId: true,
+          level: true,
+          isActive: true,
+        },
+        orderBy: [{ level: 'asc' }, { name: 'asc' }],
+      });
+    });
+
+    it('menggunakan transaction client jika tx diberikan', async () => {
+      const mockTx = {
+        department: {
+          findMany: jest.fn().mockResolvedValue([]),
+        },
+      };
+
+      await repository.findAllMinimal(mockTx as any);
+
+      expect(mockTx.department.findMany).toHaveBeenCalledWith({
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          parentId: true,
+          level: true,
+          isActive: true,
+        },
+        orderBy: [{ level: 'asc' }, { name: 'asc' }],
+      });
+      expect(prisma.department.findMany).not.toHaveBeenCalled();
+    });
+  });
 });
 

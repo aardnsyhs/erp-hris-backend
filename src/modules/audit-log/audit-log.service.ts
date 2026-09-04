@@ -16,7 +16,10 @@ export class AuditLogService {
    * Automatically redacts sensitive fields in `before` and `after` payloads.
    * Guaranteed non-blocking: errors are logged and swallowed so caller operations never fail.
    */
-  async record(params: RecordAuditLogParams) {
+  async record(
+    params: RecordAuditLogParams,
+    tx?: Prisma.TransactionClient,
+  ) {
     try {
       const redactedBefore =
         params.before !== undefined && params.before !== null
@@ -28,7 +31,8 @@ export class AuditLogService {
           ? (redactSensitiveFields(params.after) as Prisma.InputJsonValue)
           : Prisma.JsonNull;
 
-      return await this.prisma.auditLog.create({
+      const client = tx ?? this.prisma;
+      return await client.auditLog.create({
         data: {
           actorId: params.actorId ?? null,
           actorEmail: params.actorEmail ?? null,
@@ -49,6 +53,9 @@ export class AuditLogService {
         `Failed to record audit log for action "${params?.action}" on entity "${params?.entity}":`,
         error,
       );
+      if (tx) {
+        throw error;
+      }
       return null;
     }
   }
