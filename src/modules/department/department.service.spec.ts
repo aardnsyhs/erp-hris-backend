@@ -22,6 +22,8 @@ describe('DepartmentService', () => {
     name: 'Engineering',
     isActive: true,
     archivedAt: null,
+    parentId: null,
+    level: 0,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -40,6 +42,7 @@ describe('DepartmentService', () => {
     departmentRepository = {
       create: jest.fn(),
       findAll: jest.fn(),
+      findAllForTree: jest.fn(),
       countAll: jest.fn(),
       findById: jest.fn(),
       findByCode: jest.fn(),
@@ -69,11 +72,13 @@ describe('DepartmentService', () => {
       name: 'Human Resources',
     };
 
-    it('1. Sukses membuat departemen baru', async () => {
+    it('1. Sukses membuat root departemen baru (parentId=null, level=0)', async () => {
       departmentRepository.findByCode = jest.fn().mockResolvedValue(null);
       departmentRepository.create = jest.fn().mockResolvedValue({
         id: 'dept-uuid-2',
         ...createDto,
+        parentId: null,
+        level: 0,
         createdAt: new Date(),
         updatedAt: new Date(),
       });
@@ -83,7 +88,12 @@ describe('DepartmentService', () => {
       expect(result).toBeDefined();
       expect(result.code).toBe('HR');
       expect(departmentRepository.findByCode).toHaveBeenCalledWith('HR');
-      expect(departmentRepository.create).toHaveBeenCalledWith(createDto);
+      expect(departmentRepository.create).toHaveBeenCalledWith({
+        code: 'HR',
+        name: 'Human Resources',
+        parentId: null,
+        level: 0,
+      });
     });
 
     it('2. Gagal: kode departemen sudah terdaftar melempar ConflictException', async () => {
@@ -95,6 +105,245 @@ describe('DepartmentService', () => {
         departmentService.create({ code: 'ENG', name: 'Engineering 2' }),
       ).rejects.toThrow(ConflictException);
       expect(departmentRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('3. Sukses membuat child departemen baru dengan parent valid (level = parent.level + 1)', async () => {
+      const parentDept = {
+        ...mockDepartment,
+        id: 'dept-root-1',
+        level: 0,
+        isActive: true,
+      };
+      departmentRepository.findByCode = jest.fn().mockResolvedValue(null);
+      departmentRepository.findById = jest.fn().mockResolvedValue(parentDept);
+      departmentRepository.create = jest.fn().mockResolvedValue({
+        id: 'dept-child-1',
+        code: 'ENG-BE',
+        name: 'Backend Engineering',
+        parentId: 'dept-root-1',
+        level: 1,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const result = await departmentService.create({
+        code: 'ENG-BE',
+        name: 'Backend Engineering',
+        parentId: 'dept-root-1',
+      });
+
+      expect(result.level).toBe(1);
+      expect(result.parentId).toBe('dept-root-1');
+      expect(departmentRepository.findById).toHaveBeenCalledWith('dept-root-1');
+      expect(departmentRepository.create).toHaveBeenCalledWith({
+        code: 'ENG-BE',
+        name: 'Backend Engineering',
+        parentId: 'dept-root-1',
+        level: 1,
+      });
+    });
+
+    it('4. Gagal: parentId tidak ditemukan melempar NotFoundException', async () => {
+      departmentRepository.findByCode = jest.fn().mockResolvedValue(null);
+      departmentRepository.findById = jest.fn().mockResolvedValue(null);
+
+      await expect(
+        departmentService.create({
+          code: 'ENG-FE',
+          name: 'Frontend',
+          parentId: 'non-existent-id',
+        }),
+      ).rejects.toThrow(NotFoundException);
+      expect(departmentRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('5. Gagal: parentId merujuk departemen terarsip melempar BadRequestException', async () => {
+      const archivedParent = {
+        ...mockDepartment,
+        id: 'dept-archived-1',
+        isActive: false,
+      };
+      departmentRepository.findByCode = jest.fn().mockResolvedValue(null);
+      departmentRepository.findById = jest.fn().mockResolvedValue(archivedParent);
+
+      await expect(
+        departmentService.create({
+          code: 'SUB-1',
+          name: 'Sub Department',
+          parentId: 'dept-archived-1',
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(departmentRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('6. Gagal: parent sudah berada di level 3 sehingga child level 4 (max depth 4) melempar BadRequestException', async () => {
+      const level3Parent = {
+        ...mockDepartment,
+        id: 'dept-lvl3-1',
+        level: 3,
+        isActive: true,
+      };
+      departmentRepository.findByCode = jest.fn().mockResolvedValue(null);
+      departmentRepository.findById = jest.fn().mockResolvedValue(level3Parent);
+
+      await expect(
+        departmentService.create({
+          code: 'SUB-4',
+          name: 'Deep Unit',
+          parentId: 'dept-lvl3-1',
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(departmentRepository.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getTree()', () => {
+    it('7. Default: hanya memuat departemen aktif dan menyusun struktur nested tree O(n)', async () => {
+      const rawDepartments = [
+        {
+          id: 'dept-root',
+          code: 'ENG',
+          name: 'Engineering',
+          isActive: true,
+          archivedAt: null,
+          parentId: null,
+          level: 0,
+          _count: { employees: 3 },
+        },
+        {
+          id: 'dept-child-1',
+          code: 'ENG-BE',
+          name: 'Backend',
+          isActive: true,
+          archivedAt: null,
+          parentId: 'dept-root',
+          level: 1,
+          _count: { employees: 2 },
+        },
+      ];
+
+      departmentRepository.findAllForTree = jest
+        .fn()
+        .mockResolvedValue(rawDepartments);
+
+      const tree = await departmentService.getTree();
+
+      expect(departmentRepository.findAllForTree).toHaveBeenCalledWith({
+        includeArchived: undefined,
+      });
+      expect(tree).toHaveLength(1);
+      expect(tree[0].id).toBe('dept-root');
+      expect(tree[0]._count.children).toBe(1);
+      expect(tree[0].children).toHaveLength(1);
+      expect(tree[0].children[0].id).toBe('dept-child-1');
+      expect(tree[0].children[0]._count.children).toBe(0);
+      expect(tree[0].children[0].children).toHaveLength(0);
+    });
+
+    it('8. Mendukung includeArchived=true untuk memuat active dan archived departments', async () => {
+      const rawDepartments = [
+        {
+          id: 'dept-root',
+          code: 'ENG',
+          name: 'Engineering',
+          isActive: true,
+          archivedAt: null,
+          parentId: null,
+          level: 0,
+          _count: { employees: 3 },
+        },
+        {
+          id: 'dept-child-archived',
+          code: 'ENG-LEGACY',
+          name: 'Legacy Projects',
+          isActive: false,
+          archivedAt: new Date(),
+          parentId: 'dept-root',
+          level: 1,
+          _count: { employees: 0 },
+        },
+      ];
+
+      departmentRepository.findAllForTree = jest
+        .fn()
+        .mockResolvedValue(rawDepartments);
+
+      const tree = await departmentService.getTree({ includeArchived: true });
+
+      expect(departmentRepository.findAllForTree).toHaveBeenCalledWith({
+        includeArchived: true,
+      });
+      expect(tree).toHaveLength(1);
+      expect(tree[0].children).toHaveLength(1);
+      expect(tree[0].children[0].isActive).toBe(false);
+    });
+
+    it('9. Menyusun multiple root nodes dengan benar', async () => {
+      const rawDepartments = [
+        {
+          id: 'root-eng',
+          code: 'ENG',
+          name: 'Engineering',
+          isActive: true,
+          archivedAt: null,
+          parentId: null,
+          level: 0,
+          _count: { employees: 3 },
+        },
+        {
+          id: 'root-hr',
+          code: 'HR',
+          name: 'Human Resources',
+          isActive: true,
+          archivedAt: null,
+          parentId: null,
+          level: 0,
+          _count: { employees: 1 },
+        },
+      ];
+
+      departmentRepository.findAllForTree = jest
+        .fn()
+        .mockResolvedValue(rawDepartments);
+
+      const tree = await departmentService.getTree();
+
+      expect(tree).toHaveLength(2);
+      expect(tree[0].id).toBe('root-eng');
+      expect(tree[1].id).toBe('root-hr');
+    });
+
+    it('10. Defensive fallback: jika parentId tidak ditemukan dalam result set, tidak crash dan diperlakukan sebagai root fallback', async () => {
+      const rawDepartments = [
+        {
+          id: 'dept-orphan',
+          code: 'ORPHAN',
+          name: 'Orphan Unit',
+          isActive: true,
+          archivedAt: null,
+          parentId: 'missing-parent-id',
+          level: 1,
+          _count: { employees: 0 },
+        },
+      ];
+
+      departmentRepository.findAllForTree = jest
+        .fn()
+        .mockResolvedValue(rawDepartments);
+
+      const tree = await departmentService.getTree();
+
+      expect(tree).toHaveLength(1);
+      expect(tree[0].id).toBe('dept-orphan');
+      expect(tree[0].parentId).toBe('missing-parent-id');
+    });
+
+    it('11. Zero N+1: findAllForTree hanya dipanggil tepat satu kali untuk seluruh pohon', async () => {
+      departmentRepository.findAllForTree = jest.fn().mockResolvedValue([]);
+
+      await departmentService.getTree();
+
+      expect(departmentRepository.findAllForTree).toHaveBeenCalledTimes(1);
     });
   });
 

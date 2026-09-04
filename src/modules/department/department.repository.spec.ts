@@ -184,4 +184,49 @@ describe('DepartmentRepository', () => {
       });
     });
   });
+
+  describe('findAllForTree()', () => {
+    it('1. Default: mengambil departemen aktif dengan minimal select dan order level asc', async () => {
+      prisma.department.findMany.mockResolvedValue([]);
+
+      await repository.findAllForTree();
+
+      expect(prisma.department.findMany).toHaveBeenCalledWith({
+        where: { isActive: true },
+        select: expect.objectContaining({
+          id: true,
+          code: true,
+          name: true,
+          isActive: true,
+          archivedAt: true,
+          parentId: true,
+          level: true,
+          _count: expect.any(Object),
+        }),
+        orderBy: [{ level: 'asc' }, { name: 'asc' }],
+      });
+    });
+
+    it('2. includeArchived=true: mengambil seluruh departemen tanpa filter isActive', async () => {
+      prisma.department.findMany.mockResolvedValue([]);
+
+      await repository.findAllForTree({ includeArchived: true });
+
+      expect(prisma.department.findMany).toHaveBeenCalledWith({
+        where: {},
+        select: expect.objectContaining({
+          id: true,
+          code: true,
+          name: true,
+          isActive: true,
+          archivedAt: true,
+          parentId: true,
+          level: true,
+          _count: expect.any(Object),
+        }),
+        orderBy: [{ level: 'asc' }, { name: 'asc' }],
+      });
+    });
+  });
 });
+

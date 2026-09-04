@@ -1,5 +1,12 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString, MaxLength, MinLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 export class CreateDepartmentDto {
   @ApiProperty({
@@ -21,4 +28,13 @@ export class CreateDepartmentDto {
   @MinLength(2, { message: 'Nama departemen minimal 2 karakter' })
   @MaxLength(100, { message: 'Nama departemen maksimal 100 karakter' })
   name: string;
+
+  @ApiPropertyOptional({
+    example: 'c1d95c0e-319f-4b87-bbc2-d550ecf3fa29',
+    description:
+      'UUID departemen induk (opsional, jika tidak diisi departemen menjadi root node)',
+  })
+  @IsOptional()
+  @IsUUID('4', { message: 'parentId harus berupa UUID v4 yang valid' })
+  parentId?: string;
 }

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -9,13 +10,17 @@ import { DepartmentRepository } from './department.repository';
 import { CreateDepartmentDto } from './dto/create-department.dto';
 import { UpdateDepartmentDto } from './dto/update-department.dto';
 import { DepartmentQueryDto } from './dto/department-query.dto';
+import { DepartmentTreeQueryDto } from './dto/department-tree-query.dto';
 import { ArchiveDepartmentDto } from './dto/archive-department.dto';
 import { RestoreDepartmentDto } from './dto/restore-department.dto';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
+import { DepartmentTreeNode } from './interfaces/department-tree-node.interface';
 
 @Injectable()
 export class DepartmentService {
+  private readonly logger = new Logger(DepartmentService.name);
+
   constructor(
     private readonly departmentRepository: DepartmentRepository,
     private readonly auditLogService: AuditLogService,
@@ -32,7 +37,40 @@ export class DepartmentService {
       );
     }
 
-    const created = await this.departmentRepository.create(createDepartmentDto);
+    let level = 0;
+    let parentId: string | null = null;
+
+    if (createDepartmentDto.parentId) {
+      const parent = await this.departmentRepository.findById(
+        createDepartmentDto.parentId,
+      );
+
+      if (!parent) {
+        throw new NotFoundException('Departemen induk tidak ditemukan');
+      }
+
+      if (!parent.isActive) {
+        throw new BadRequestException(
+          'Tidak dapat menambahkan sub-departemen ke departemen induk yang sedang diarsipkan',
+        );
+      }
+
+      if (parent.level >= 3) {
+        throw new BadRequestException(
+          'Batas kedalaman hierarki maksimum (4 level) telah tercapai',
+        );
+      }
+
+      parentId = parent.id;
+      level = parent.level + 1;
+    }
+
+    const created = await this.departmentRepository.create({
+      code: createDepartmentDto.code,
+      name: createDepartmentDto.name,
+      parentId,
+      level,
+    });
 
     await this.auditLogService.record({
       action: 'CREATE',
@@ -43,6 +81,54 @@ export class DepartmentService {
     });
 
     return created;
+  }
+
+  async getTree(query?: DepartmentTreeQueryDto): Promise<DepartmentTreeNode[]> {
+    const rawItems = await this.departmentRepository.findAllForTree({
+      includeArchived: query?.includeArchived,
+    });
+
+    const map = new Map<string, DepartmentTreeNode>();
+    const roots: DepartmentTreeNode[] = [];
+
+    // Step 1: Inisialisasi node dalam hash map
+    for (const item of rawItems) {
+      map.set(item.id, {
+        id: item.id,
+        code: item.code,
+        name: item.name,
+        isActive: item.isActive,
+        archivedAt: item.archivedAt,
+        parentId: item.parentId,
+        level: item.level,
+        _count: {
+          employees: item._count.employees,
+          children: 0,
+        },
+        children: [],
+      });
+    }
+
+    // Step 2: Hubungkan parent dan child secara O(n) dalam single pass
+    for (const item of rawItems) {
+      const node = map.get(item.id)!;
+
+      if (!item.parentId) {
+        roots.push(node);
+      } else if (map.has(item.parentId)) {
+        const parent = map.get(item.parentId)!;
+        parent.children.push(node);
+        parent._count.children++;
+      } else {
+        // Defensive fallback jika parentId tidak ditemukan dalam result set
+        this.logger.warn(
+          `Departemen '${item.id}' (${item.code}) mereferensikan parentId '${item.parentId}' yang tidak ditemukan; diperlakukan sebagai fallback root`,
+        );
+        roots.push(node);
+      }
+    }
+
+    return roots;
   }
 
   async findAll(query: DepartmentQueryDto) {

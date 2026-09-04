@@ -22,6 +22,7 @@ import { DepartmentService } from './department.service';
 import { CreateDepartmentDto } from './dto/create-department.dto';
 import { UpdateDepartmentDto } from './dto/update-department.dto';
 import { DepartmentQueryDto } from './dto/department-query.dto';
+import { DepartmentTreeQueryDto } from './dto/department-tree-query.dto';
 import { ArchiveDepartmentDto } from './dto/archive-department.dto';
 import { RestoreDepartmentDto } from './dto/restore-department.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -60,6 +61,20 @@ export class DepartmentController {
   })
   async findAll(@Query() query: DepartmentQueryDto) {
     return this.departmentService.findAll(query);
+  }
+
+  @Get('tree')
+  @ApiOperation({
+    summary: 'Struktur pohon hierarki departemen (All authenticated roles)',
+    description:
+      'Mengambil seluruh struktur hierarki departemen dalam format nested tree (O(n) single pass). Default: hanya departemen aktif. Gunakan ?includeArchived=true untuk memuat seluruh pohon (aktif & arsip).',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Pohon hierarki departemen berhasil diambil',
+  })
+  async getTree(@Query() query: DepartmentTreeQueryDto) {
+    return this.departmentService.getTree(query);
   }
 
   @Get(':id')

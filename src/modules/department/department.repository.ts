@@ -32,9 +32,61 @@ export class DepartmentRepository {
     return where;
   }
 
-  async create(data: { code: string; name: string }): Promise<Department> {
+  async create(data: {
+    code: string;
+    name: string;
+    parentId?: string | null;
+    level?: number;
+  }): Promise<Department> {
     return this.prisma.department.create({
       data,
+    });
+  }
+
+  async findAllForTree(options?: {
+    includeArchived?: boolean;
+  }): Promise<
+    Array<{
+      id: string;
+      code: string;
+      name: string;
+      isActive: boolean;
+      archivedAt: Date | null;
+      parentId: string | null;
+      level: number;
+      _count: {
+        employees: number;
+      };
+    }>
+  > {
+    const where: Prisma.DepartmentWhereInput = {};
+
+    if (!options?.includeArchived) {
+      where.isActive = true;
+    }
+
+    return this.prisma.department.findMany({
+      where,
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        isActive: true,
+        archivedAt: true,
+        parentId: true,
+        level: true,
+        _count: {
+          select: {
+            employees: {
+              where: {
+                status: EmployeeStatus.ACTIVE,
+                deletedAt: null,
+              },
+            },
+          },
+        },
+      },
+      orderBy: [{ level: 'asc' }, { name: 'asc' }],
     });
   }
 

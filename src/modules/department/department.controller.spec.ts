@@ -12,6 +12,7 @@ describe('DepartmentController', () => {
   let service: {
     create: jest.Mock;
     findAll: jest.Mock;
+    getTree: jest.Mock;
     findById: jest.Mock;
     update: jest.Mock;
     archive: jest.Mock;
@@ -41,6 +42,7 @@ describe('DepartmentController', () => {
     service = {
       create: jest.fn(),
       findAll: jest.fn(),
+      getTree: jest.fn(),
       findById: jest.fn(),
       update: jest.fn(),
       archive: jest.fn(),
@@ -74,6 +76,19 @@ describe('DepartmentController', () => {
 
       expect(result).toBe(mockResult);
       expect(service.findAll).toHaveBeenCalledWith(query);
+    });
+  });
+
+  describe('getTree()', () => {
+    it('mendelegasikan ke service.getTree dengan parameter query', async () => {
+      const mockTree = [{ ...mockDepartment, level: 0, parentId: null, children: [] }];
+      service.getTree.mockResolvedValue(mockTree as any);
+
+      const query = { includeArchived: true };
+      const result = await controller.getTree(query);
+
+      expect(result).toBe(mockTree);
+      expect(service.getTree).toHaveBeenCalledWith(query);
     });
   });
 
