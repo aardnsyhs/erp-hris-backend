@@ -6,7 +6,7 @@ import { Public } from './common/decorators/public.decorator';
 @ApiTags('Health')
 @Controller('health')
 export class AppController {
-  constructor(private readonly appService: AppService) {}
+  constructor(private readonly appService: AppService) { }
 
   @Public()
   @Get()
@@ -28,5 +28,11 @@ export class AppController {
   })
   getHealth() {
     return this.appService.getHealth();
+  }
+
+  @Public()
+  @Get("/debug-sentry")
+  getError() {
+    throw new Error("My first Sentry error!");
   }
 }

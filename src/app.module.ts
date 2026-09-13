@@ -1,5 +1,7 @@
 import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { SentryModule } from '@sentry/nestjs/setup';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+import { SentryGlobalFilter } from '@sentry/nestjs/setup';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
@@ -28,6 +30,7 @@ import { RolesGuard } from './common/guards/roles.guard';
 
 @Module({
   imports: [
+    SentryModule.forRoot(),
     ConfigModule.forRoot({
       isGlobal: true,
     }),
@@ -62,6 +65,10 @@ import { RolesGuard } from './common/guards/roles.guard';
   ],
   controllers: [AppController],
   providers: [
+    {
+      provide: APP_FILTER,
+      useClass: SentryGlobalFilter,
+    },
     AppService,
     // 1. JwtAuthGuard runs first to authenticate and populate request.user
     {
