@@ -14,8 +14,8 @@ import { UpdateEmergencyContactDto } from './dto/update-emergency-contact.dto';
 
 describe('EmergencyContactService', () => {
   let service: EmergencyContactService;
-  let repository: jest.Mocked<Partial<EmergencyContactRepository>>;
-  let auditLogService: jest.Mocked<Partial<AuditLogService>>;
+  let repository: jest.Mocked<EmergencyContactRepository>;
+  let auditLogService: jest.Mocked<AuditLogService>;
 
   const mockDepartmentEng = {
     id: 'dept-eng-uuid',
@@ -122,11 +122,11 @@ describe('EmergencyContactService', () => {
       create: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
-    };
+    } as unknown as jest.Mocked<EmergencyContactRepository>;
 
     auditLogService = {
       record: jest.fn().mockResolvedValue({ id: 'audit-1' }),
-    };
+    } as unknown as jest.Mocked<AuditLogService>;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [

@@ -16,9 +16,9 @@ import { CreateDocumentDto } from './dto/create-document.dto';
 
 describe('EmployeeDocumentService', () => {
   let service: EmployeeDocumentService;
-  let repository: jest.Mocked<Partial<EmployeeDocumentRepository>>;
-  let storageService: jest.Mocked<Partial<StorageService>>;
-  let auditLogService: jest.Mocked<Partial<AuditLogService>>;
+  let repository: jest.Mocked<EmployeeDocumentRepository>;
+  let storageService: jest.Mocked<StorageService>;
+  let auditLogService: jest.Mocked<AuditLogService>;
 
   const mockEmployee = {
     id: 'emp-1',
@@ -90,7 +90,7 @@ describe('EmployeeDocumentService', () => {
       findMany: jest.fn(),
       findById: jest.fn(),
       softDelete: jest.fn(),
-    };
+    } as unknown as jest.Mocked<EmployeeDocumentRepository>;
 
     storageService = {
       upload: jest.fn().mockResolvedValue({
@@ -99,11 +99,11 @@ describe('EmployeeDocumentService', () => {
       }),
       exists: jest.fn().mockResolvedValue(true),
       getDownloadStream: jest.fn().mockResolvedValue(new Readable()),
-    };
+    } as unknown as jest.Mocked<StorageService>;
 
     auditLogService = {
       record: jest.fn().mockResolvedValue({ id: 'audit-1' }),
-    };
+    } as unknown as jest.Mocked<AuditLogService>;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [

@@ -43,9 +43,7 @@ export class DepartmentRepository {
     });
   }
 
-  async findAllForTree(options?: {
-    includeArchived?: boolean;
-  }): Promise<
+  async findAllForTree(options?: { includeArchived?: boolean }): Promise<
     Array<{
       id: string;
       code: string;
@@ -95,7 +93,7 @@ export class DepartmentRepository {
     take: number;
     search?: string;
     status?: DepartmentStatusFilter;
-  }): Promise<Department[]> {
+  }) {
     const where = this.buildWhere(options);
 
     return this.prisma.department.findMany({
@@ -104,6 +102,14 @@ export class DepartmentRepository {
       take: options.take,
       orderBy: { createdAt: 'desc' },
       include: {
+        parent: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+            level: true,
+          },
+        },
         _count: {
           select: {
             employees: {
@@ -126,10 +132,18 @@ export class DepartmentRepository {
     return this.prisma.department.count({ where });
   }
 
-  async findById(id: string): Promise<Department | null> {
+  async findById(id: string) {
     return this.prisma.department.findUnique({
       where: { id },
       include: {
+        parent: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+            level: true,
+          },
+        },
         _count: {
           select: {
             employees: {
@@ -152,7 +166,12 @@ export class DepartmentRepository {
 
   async update(
     id: string,
-    data: Partial<{ code: string; name: string; isActive: boolean; archivedAt: Date | null }>,
+    data: Partial<{
+      code: string;
+      name: string;
+      isActive: boolean;
+      archivedAt: Date | null;
+    }>,
   ): Promise<Department> {
     return this.prisma.department.update({
       where: { id },
