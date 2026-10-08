@@ -27,6 +27,10 @@ export class FindAuditLogsQueryDto {
   endDate?: string;
 
   @IsOptional()
+  @IsString()
+  search?: string;
+
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)

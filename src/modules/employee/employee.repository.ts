@@ -83,6 +83,7 @@ export class EmployeeRepository {
       orderBy: { createdAt: 'desc' },
       include: {
         department: true,
+        user: true,
       },
     });
   }
@@ -116,6 +117,7 @@ export class EmployeeRepository {
       },
       include: {
         department: true,
+        user: true,
       },
     });
   }
@@ -125,6 +127,7 @@ export class EmployeeRepository {
       where: { id },
       include: {
         department: true,
+        user: true,
       },
     });
   }
@@ -157,12 +160,24 @@ export class EmployeeRepository {
     id: string,
     data: Prisma.EmployeeUncheckedUpdateInput,
   ): Promise<Employee> {
-    return this.prisma.employee.update({
-      where: { id },
-      data,
-      include: {
-        department: true,
-      },
+    return this.prisma.$transaction(async (tx) => {
+      const updatedEmployee = await tx.employee.update({
+        where: { id },
+        data,
+        include: {
+          department: true,
+        },
+      });
+
+      if (data.status !== undefined) {
+        const isActive = data.status === EmployeeStatus.ACTIVE;
+        await tx.user.updateMany({
+          where: { employeeId: id },
+          data: { isActive },
+        });
+      }
+
+      return updatedEmployee;
     });
   }
 

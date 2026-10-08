@@ -33,6 +33,15 @@ export class LeaveRequestService {
       );
     }
 
+    const todayStr = new Date().toISOString().split('T')[0];
+    const startDateStr = new Date(dto.startDate).toISOString().split('T')[0];
+    // Validation removed to allow backdated leave requests (e.g., sick leave)
+    // if (startDateStr < todayStr) {
+    //   throw new BadRequestException(
+    //     'Tidak dapat mengajukan permohonan cuti untuk tanggal yang sudah lewat',
+    //   );
+    // }
+
     const overlappingApproved =
       await this.leaveRequestRepository.findOverlappingApproved(
         currentUser.employeeId,
@@ -276,6 +285,7 @@ export class LeaveRequestService {
         departmentId: targetDepartmentId,
         status: query.status,
         leaveType: query.leaveType,
+        search: query.search,
         startDate: query.startDate,
         endDate: query.endDate,
       }),
@@ -284,6 +294,7 @@ export class LeaveRequestService {
         departmentId: targetDepartmentId,
         status: query.status,
         leaveType: query.leaveType,
+        search: query.search,
         startDate: query.startDate,
         endDate: query.endDate,
       }),

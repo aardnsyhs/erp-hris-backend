@@ -26,6 +26,11 @@ export class AuthUserDto {
     description: 'Employee UUID jika terhubung',
   })
   employeeId?: string | null;
+
+  @ApiPropertyOptional({
+    description: 'Profil Employee yang terhubung dengan akun',
+  })
+  employee?: any | null;
 }
 
 export class AuthResponseDto {

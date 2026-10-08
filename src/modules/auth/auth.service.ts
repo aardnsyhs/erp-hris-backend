@@ -33,7 +33,7 @@ export class AuthService {
   async login(loginDto: LoginDto): Promise<LoginResult> {
     const genericErrorMessage = 'Email atau password tidak valid';
 
-    const user = await this.authRepository.findByEmail(loginDto.email);
+    const user = await this.authRepository.findByEmailWithEmployee(loginDto.email);
     if (!user) {
       await this.auditLogService.record({
         action: 'LOGIN_FAILED',
@@ -140,6 +140,25 @@ export class AuthService {
         role: user.role,
         isActive: user.isActive,
         employeeId: user.employeeId,
+        employee: (user as any).employee
+        ? {
+            id: (user as any).employee.id,
+            nip: (user as any).employee.nip,
+            fullName: (user as any).employee.fullName,
+            email: (user as any).employee.email,
+            phone: (user as any).employee.phone,
+            jobTitle: (user as any).employee.jobTitle,
+            hireDate: (user as any).employee.hireDate,
+            status: (user as any).employee.status,
+            department: (user as any).employee.department
+              ? {
+                  id: (user as any).employee.department.id,
+                  code: (user as any).employee.department.code,
+                  name: (user as any).employee.department.name,
+                }
+              : null,
+          }
+        : null,
       },
     };
   }

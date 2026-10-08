@@ -75,4 +75,11 @@ export class PayrollQueryDto {
   @Type(() => Date)
   @IsDate({ message: 'periodEnd harus berupa tanggal yang valid' })
   periodEnd?: Date;
+
+  @ApiPropertyOptional({
+    example: 'John Doe',
+    description: 'Filter pencarian berdasarkan nama karyawan',
+  })
+  @IsOptional()
+  search?: string;
 }

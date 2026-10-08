@@ -141,6 +141,7 @@ export class LeaveRequestRepository {
     departmentId?: string;
     status?: LeaveRequestStatus;
     leaveType?: LeaveType;
+    search?: string;
     startDate?: Date;
     endDate?: Date;
   }): Promise<LeaveRequest[]> {
@@ -148,9 +149,15 @@ export class LeaveRequestRepository {
       ...(options.employeeId && { employeeId: options.employeeId }),
       ...(options.status && { status: options.status }),
       ...(options.leaveType && { leaveType: options.leaveType }),
-      ...(options.departmentId && {
+      ...((options.departmentId || options.search) && {
         employee: {
-          departmentId: options.departmentId,
+          ...(options.departmentId && { departmentId: options.departmentId }),
+          ...(options.search && {
+            OR: [
+              { fullName: { contains: options.search, mode: 'insensitive' } },
+              { nip: { contains: options.search, mode: 'insensitive' } },
+            ],
+          }),
         },
       }),
       ...((options.startDate || options.endDate) && {
@@ -180,6 +187,7 @@ export class LeaveRequestRepository {
     departmentId?: string;
     status?: LeaveRequestStatus;
     leaveType?: LeaveType;
+    search?: string;
     startDate?: Date;
     endDate?: Date;
   }): Promise<number> {
@@ -187,9 +195,15 @@ export class LeaveRequestRepository {
       ...(options.employeeId && { employeeId: options.employeeId }),
       ...(options.status && { status: options.status }),
       ...(options.leaveType && { leaveType: options.leaveType }),
-      ...(options.departmentId && {
+      ...((options.departmentId || options.search) && {
         employee: {
-          departmentId: options.departmentId,
+          ...(options.departmentId && { departmentId: options.departmentId }),
+          ...(options.search && {
+            OR: [
+              { fullName: { contains: options.search, mode: 'insensitive' } },
+              { nip: { contains: options.search, mode: 'insensitive' } },
+            ],
+          }),
         },
       }),
       ...((options.startDate || options.endDate) && {

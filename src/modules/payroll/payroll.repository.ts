@@ -73,15 +73,20 @@ export class PayrollRepository {
     status?: PayrollStatus;
     periodStart?: Date;
     periodEnd?: Date;
+    search?: string;
   }): Promise<PayrollWithDetails[]> {
+    const employeeCondition: any = {};
+    if (options.departmentId) {
+      employeeCondition.departmentId = options.departmentId;
+    }
+    if (options.search) {
+      employeeCondition.fullName = { contains: options.search, mode: 'insensitive' };
+    }
+
     const where: Prisma.PayrollWhereInput = {
       ...(options.employeeId && { employeeId: options.employeeId }),
       ...(options.status && { status: options.status }),
-      ...(options.departmentId && {
-        employee: {
-          departmentId: options.departmentId,
-        },
-      }),
+      ...(Object.keys(employeeCondition).length > 0 && { employee: employeeCondition }),
       ...((options.periodStart || options.periodEnd) && {
         periodStart: {
           ...(options.periodStart && { gte: options.periodStart }),
@@ -113,15 +118,20 @@ export class PayrollRepository {
     status?: PayrollStatus;
     periodStart?: Date;
     periodEnd?: Date;
+    search?: string;
   }): Promise<number> {
+    const employeeCondition: any = {};
+    if (options.departmentId) {
+      employeeCondition.departmentId = options.departmentId;
+    }
+    if (options.search) {
+      employeeCondition.fullName = { contains: options.search, mode: 'insensitive' };
+    }
+
     const where: Prisma.PayrollWhereInput = {
       ...(options.employeeId && { employeeId: options.employeeId }),
       ...(options.status && { status: options.status }),
-      ...(options.departmentId && {
-        employee: {
-          departmentId: options.departmentId,
-        },
-      }),
+      ...(Object.keys(employeeCondition).length > 0 && { employee: employeeCondition }),
       ...((options.periodStart || options.periodEnd) && {
         periodStart: {
           ...(options.periodStart && { gte: options.periodStart }),

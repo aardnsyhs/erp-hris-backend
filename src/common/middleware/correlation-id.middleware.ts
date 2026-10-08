@@ -1,6 +1,7 @@
 import { Injectable, NestMiddleware } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import { randomUUID } from 'crypto';
+import { requestContext } from './request-context';
 
 export interface RequestWithCorrelationId extends Request {
   correlationId?: string;
@@ -18,6 +19,8 @@ export class CorrelationIdMiddleware implements NestMiddleware {
     req.correlationId = correlationId;
     res.setHeader('x-correlation-id', correlationId);
 
-    next();
+    requestContext.run(req as any, () => {
+      next();
+    });
   }
 }

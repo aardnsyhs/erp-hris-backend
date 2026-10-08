@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { RecordAuditLogParams } from './interfaces/audit-log.interface';
 import { FindAuditLogsQueryDto } from './dto/audit-log.dto';
 import { redactSensitiveFields } from './utils/redaction.util';
+import { requestContext } from '../../common/middleware/request-context';
 
 @Injectable()
 export class AuditLogService {
@@ -31,21 +32,36 @@ export class AuditLogService {
           ? (redactSensitiveFields(params.after) as Prisma.InputJsonValue)
           : Prisma.JsonNull;
 
+      const req = requestContext.getStore() as any;
+      let { ipAddress, userAgent, correlationId, actorId, actorEmail, actorRole } = params;
+      
+      if (req) {
+        if (!ipAddress) ipAddress = req.ip || req.headers['x-forwarded-for'];
+        if (!userAgent) userAgent = req.headers['user-agent'];
+        if (!correlationId) correlationId = req.correlationId;
+        
+        if (req.user) {
+          if (!actorId) actorId = req.user.id;
+          if (!actorEmail) actorEmail = req.user.email;
+          if (!actorRole) actorRole = req.user.role;
+        }
+      }
+
       const client = tx ?? this.prisma;
       return await client.auditLog.create({
         data: {
-          actorId: params.actorId ?? null,
-          actorEmail: params.actorEmail ?? null,
-          actorRole: params.actorRole ?? null,
+          actorId: actorId ?? null,
+          actorEmail: actorEmail ?? null,
+          actorRole: actorRole ?? null,
           action: params.action,
           entity: params.entity,
           entityId: String(params.entityId),
           before: redactedBefore,
           after: redactedAfter,
           source: params.source ?? 'USER',
-          ipAddress: params.ipAddress ?? null,
-          userAgent: params.userAgent ?? null,
-          correlationId: params.correlationId ?? null,
+          ipAddress: ipAddress ?? null,
+          userAgent: userAgent ?? null,
+          correlationId: correlationId ?? null,
         },
       });
     } catch (error) {
@@ -78,6 +94,7 @@ export class AuditLogService {
       actorId,
       startDate,
       endDate,
+      search,
       page = 1,
       limit = 20,
     } = query;
@@ -104,6 +121,13 @@ export class AuditLogService {
       if (endDate) {
         where.createdAt.lte = new Date(endDate);
       }
+    }
+    
+    if (search) {
+      where.OR = [
+        { actorEmail: { contains: search, mode: 'insensitive' } },
+        { entityId: { contains: search, mode: 'insensitive' } },
+      ];
     }
 
     const skip = (page - 1) * limit;

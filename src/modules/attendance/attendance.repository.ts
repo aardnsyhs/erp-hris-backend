@@ -78,15 +78,22 @@ export class AttendanceRepository {
     employeeId?: string;
     departmentId?: string;
     status?: AttendanceStatus;
+    search?: string;
     startDate?: Date;
     endDate?: Date;
   }): Promise<Attendance[]> {
     const where: Prisma.AttendanceWhereInput = {
       ...(options.employeeId && { employeeId: options.employeeId }),
       ...(options.status && { status: options.status }),
-      ...(options.departmentId && {
+      ...((options.departmentId || options.search) && {
         employee: {
-          departmentId: options.departmentId,
+          ...(options.departmentId && { departmentId: options.departmentId }),
+          ...(options.search && {
+            OR: [
+              { fullName: { contains: options.search, mode: 'insensitive' } },
+              { nip: { contains: options.search, mode: 'insensitive' } },
+            ],
+          }),
         },
       }),
       ...((options.startDate || options.endDate) && {
@@ -112,15 +119,22 @@ export class AttendanceRepository {
     employeeId?: string;
     departmentId?: string;
     status?: AttendanceStatus;
+    search?: string;
     startDate?: Date;
     endDate?: Date;
   }): Promise<number> {
     const where: Prisma.AttendanceWhereInput = {
       ...(options.employeeId && { employeeId: options.employeeId }),
       ...(options.status && { status: options.status }),
-      ...(options.departmentId && {
+      ...((options.departmentId || options.search) && {
         employee: {
-          departmentId: options.departmentId,
+          ...(options.departmentId && { departmentId: options.departmentId }),
+          ...(options.search && {
+            OR: [
+              { fullName: { contains: options.search, mode: 'insensitive' } },
+              { nip: { contains: options.search, mode: 'insensitive' } },
+            ],
+          }),
         },
       }),
       ...((options.startDate || options.endDate) && {

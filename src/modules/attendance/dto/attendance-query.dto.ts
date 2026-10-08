@@ -5,6 +5,7 @@ import {
   IsEnum,
   IsInt,
   IsOptional,
+  IsString,
   IsUUID,
   Max,
   Min,
@@ -30,6 +31,14 @@ export class AttendanceQueryDto {
   @Min(1, { message: 'Limit minimal bernilai 1' })
   @Max(100, { message: 'Limit maksimal bernilai 100' })
   limit?: number = 10;
+
+  @ApiPropertyOptional({
+    example: 'John',
+    description: 'Kata kunci pencarian nama atau nip',
+  })
+  @IsOptional()
+  @IsString({ message: 'Search harus berupa string' })
+  search?: string;
 
   @ApiPropertyOptional({
     example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
