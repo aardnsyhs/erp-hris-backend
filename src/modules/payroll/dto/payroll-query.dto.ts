@@ -1,7 +1,8 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsDate,
+  IsBoolean,
   IsEnum,
   IsInt,
   IsOptional,
@@ -12,6 +13,17 @@ import {
 import { PayrollStatus } from '@prisma/client';
 
 export class PayrollQueryDto {
+  @ApiPropertyOptional({
+    default: false,
+    description:
+      'Match the exact period boundaries, used by HR Brief payroll groups',
+  })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    value === 'true' ? true : value === 'false' ? false : value,
+  )
+  @IsBoolean()
+  exactPeriod?: boolean;
   @ApiPropertyOptional({ example: 1, description: 'Nomor halaman', default: 1 })
   @IsOptional()
   @Type(() => Number)

@@ -1,7 +1,6 @@
 import 'dotenv/config';
 import {
   AssignmentType,
-  AttendanceStatus,
   ContractStatus,
   ContractType,
   EmployeeStatus,
@@ -14,18 +13,40 @@ import {
   UserRole,
   DocumentType,
   ScanStatus,
+  Department,
+  Employee,
+  Position,
 } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import * as bcrypt from 'bcrypt';
 import { fakerID_ID, fakerEN } from '@faker-js/faker';
+import {
+  addCalendarDays,
+  getWibDate,
+  parseTimeString,
+} from '../src/common/utils/timezone.util';
+import {
+  seedDatabaseUrl,
+  demoAttendance,
+  demoPeriods,
+  demoLeaveDates,
+  DEMO_CONTRACT_OFFSETS,
+  DEMO_PAYROLL_STATUSES,
+} from './seed-data';
 
 const adapter = new PrismaPg({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: seedDatabaseUrl(process.env),
 });
 
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
+  const now = new Date();
+  const today = getWibDate(now);
+  fakerEN.seed(20261008);
+  fakerID_ID.seed(20261008);
+  fakerEN.setDefaultRefDate(now);
+  fakerID_ID.setDefaultRefDate(now);
   console.log('--- Starting HRIS & ERP Database Seeding with Faker ---');
 
   // Clear existing data (optional, but good for clean seeder)
@@ -33,13 +54,14 @@ async function main() {
   await prisma.payroll.deleteMany();
   await prisma.leaveRequest.deleteMany();
   await prisma.attendance.deleteMany();
-  await prisma.employeeDocument.deleteMany();
   await prisma.auditLog.deleteMany();
   await prisma.employeeMovementHistory.deleteMany();
   await prisma.employeeReportingLine.deleteMany();
   await prisma.employeePositionAssignment.deleteMany();
   await prisma.employmentContract.deleteMany();
+  await prisma.employeeDocument.deleteMany();
   await prisma.employeeEmergencyContact.deleteMany();
+  await prisma.refreshToken.deleteMany();
   await prisma.user.deleteMany();
   await prisma.employee.deleteMany();
   await prisma.position.deleteMany();
@@ -56,16 +78,14 @@ async function main() {
     { code: 'SAL', name: 'Sales' },
     { code: 'OPS', name: 'Operations' },
   ];
-  
-  const depts: any[] = [];
+
+  const depts: Department[] = [];
   for (const d of deptData) {
     const dept = await prisma.department.create({
       data: d,
     });
     depts.push(dept);
   }
-  const engDept = depts.find(d => d.code === 'ENG')!;
-  const hrDept = depts.find(d => d.code === 'HR')!;
 
   // 2. Positions
   console.log('2. Seeding Positions...');
@@ -76,7 +96,7 @@ async function main() {
     { code: 'SNR', title: 'Senior Staff', level: 4 },
     { code: 'JNR', title: 'Junior Staff', level: 5 },
   ];
-  const positions: any[] = [];
+  const positions: Position[] = [];
   for (const p of positionsData) {
     const pos = await prisma.position.create({
       data: p,
@@ -162,13 +182,13 @@ async function main() {
     },
   ];
 
-  const allEmployees: any[] = [];
+  const allEmployees: Employee[] = [];
   let adminUserId: string = '';
 
   for (const cu of coreUsers) {
-    const d = depts.find(dept => dept.code === cu.deptCode)!;
-    const p = positions.find(pos => pos.code === cu.posCode)!;
-    
+    const d = depts.find((dept) => dept.code === cu.deptCode)!;
+    const p = positions.find((pos) => pos.code === cu.posCode)!;
+
     const emp = await prisma.employee.create({
       data: {
         departmentId: d.id,
@@ -177,7 +197,7 @@ async function main() {
         email: cu.email,
         phone: cu.phone,
         jobTitle: cu.jobTitle,
-        hireDate: new Date('2023-01-01'),
+        hireDate: addCalendarDays(today, -1000),
         baseSalary: new Prisma.Decimal(cu.baseSalary),
         status: EmployeeStatus.ACTIVE,
       },
@@ -192,7 +212,7 @@ async function main() {
         employeeId: emp.id,
       },
     });
-    
+
     if (cu.role === UserRole.HR_ADMIN) {
       adminUserId = user.id;
     }
@@ -204,9 +224,9 @@ async function main() {
         employeeId: emp.id,
         positionId: p.id,
         departmentId: d.id,
-        effectiveFrom: new Date('2023-01-01'),
+        effectiveFrom: emp.hireDate,
         assignmentType: AssignmentType.INITIAL,
-        assignedById: adminUserId || user.id, 
+        assignedById: adminUserId || user.id,
         notes: 'Initial Assignment',
       },
     });
@@ -216,19 +236,23 @@ async function main() {
         employeeId: emp.id,
         contractType: ContractType.PERMANENT,
         contractNumber: `CTR-${cu.nip}`,
-        startDate: new Date('2023-01-01'),
+        startDate: emp.hireDate,
         status: ContractStatus.ACTIVE,
-      }
+      },
     });
 
     await prisma.employeeEmergencyContact.create({
       data: {
         employeeId: emp.id,
         name: fakerID_ID.person.fullName(),
-        relationship: fakerEN.helpers.arrayElement(['Spouse', 'Parent', 'Sibling']),
+        relationship: fakerEN.helpers.arrayElement([
+          'Spouse',
+          'Parent',
+          'Sibling',
+        ]),
         phone: fakerID_ID.phone.number(),
         isPrimary: true,
-      }
+      },
     });
 
     await prisma.employeeDocument.create({
@@ -242,7 +266,7 @@ async function main() {
         fileSizeBytes: fakerEN.number.int({ min: 100000, max: 2000000 }),
         uploadedById: adminUserId || user.id,
         scanStatus: ScanStatus.CLEAN,
-      }
+      },
     });
 
     await prisma.employeeMovementHistory.create({
@@ -251,10 +275,10 @@ async function main() {
         movementType: MovementType.HIRE,
         toPositionId: p.id,
         toDepartmentId: d.id,
-        effectiveDate: new Date('2023-01-01'),
+        effectiveDate: emp.hireDate,
         reason: 'New Hire',
         performedById: adminUserId || user.id,
-      }
+      },
     });
 
     await prisma.auditLog.create({
@@ -266,7 +290,7 @@ async function main() {
         entity: 'Employee',
         entityId: emp.id,
         source: 'SYSTEM_SEEDER',
-      }
+      },
     });
   }
 
@@ -276,18 +300,28 @@ async function main() {
     const d = fakerEN.helpers.arrayElement(depts);
     const p = fakerEN.helpers.arrayElement(positions);
     const fullName = fakerID_ID.person.fullName();
-    const email = fakerEN.internet.email({ firstName: fullName.split(' ')[0], lastName: fullName.split(' ')[1] }).toLowerCase();
-    
+    const email = fakerEN.internet
+      .email({
+        firstName: fullName.split(' ')[0],
+        lastName: fullName.split(' ')[1],
+      })
+      .toLowerCase();
+
     const emp = await prisma.employee.create({
       data: {
         departmentId: d.id,
-        nip: `EMP-RND-${String(i+1).padStart(3, '0')}`,
+        nip: `EMP-RND-${String(i + 1).padStart(3, '0')}`,
         fullName: fullName,
         email: email,
         phone: fakerID_ID.phone.number(),
         jobTitle: `${d.name} ${p.title}`,
-        hireDate: fakerEN.date.past({ years: 2 }),
-        baseSalary: new Prisma.Decimal(fakerEN.number.int({ min: 50, max: 200 }) * 100000),
+        hireDate: addCalendarDays(
+          today,
+          -fakerEN.number.int({ min: 120, max: 1000 }),
+        ),
+        baseSalary: new Prisma.Decimal(
+          fakerEN.number.int({ min: 50, max: 200 }) * 100000,
+        ),
         status: EmployeeStatus.ACTIVE,
       },
     });
@@ -317,22 +351,34 @@ async function main() {
     await prisma.employmentContract.create({
       data: {
         employeeId: emp.id,
-        contractType: fakerEN.helpers.arrayElement([ContractType.PERMANENT, ContractType.CONTRACT]),
-        contractNumber: `CTR-RND-${String(i+1).padStart(3, '0')}`,
+        contractType:
+          i < 5 || i % 2 === 0 ? ContractType.CONTRACT : ContractType.PERMANENT,
+        contractNumber: `CTR-RND-${String(i + 1).padStart(3, '0')}`,
         startDate: emp.hireDate,
-        endDate: fakerEN.date.future({ years: 1 }),
+        endDate:
+          i >= 5 && i % 2 !== 0
+            ? null
+            : addCalendarDays(
+                today,
+                DEMO_CONTRACT_OFFSETS[i] ??
+                  fakerEN.number.int({ min: 60, max: 365 }),
+              ),
         status: ContractStatus.ACTIVE,
-      }
+      },
     });
 
     await prisma.employeeEmergencyContact.create({
       data: {
         employeeId: emp.id,
         name: fakerID_ID.person.fullName(),
-        relationship: fakerEN.helpers.arrayElement(['Spouse', 'Parent', 'Sibling']),
+        relationship: fakerEN.helpers.arrayElement([
+          'Spouse',
+          'Parent',
+          'Sibling',
+        ]),
         phone: fakerID_ID.phone.number(),
         isPrimary: true,
-      }
+      },
     });
 
     await prisma.employeeDocument.create({
@@ -346,7 +392,7 @@ async function main() {
         fileSizeBytes: fakerEN.number.int({ min: 100000, max: 2000000 }),
         uploadedById: adminUserId,
         scanStatus: ScanStatus.CLEAN,
-      }
+      },
     });
 
     await prisma.employeeMovementHistory.create({
@@ -358,7 +404,7 @@ async function main() {
         effectiveDate: emp.hireDate,
         reason: 'New Hire',
         performedById: adminUserId,
-      }
+      },
     });
 
     await prisma.auditLog.create({
@@ -370,58 +416,58 @@ async function main() {
         entity: 'Employee',
         entityId: emp.id,
         source: 'SYSTEM_SEEDER',
-      }
+      },
     });
   }
 
   // Generate Reporting Lines (Managers for Employees)
-  const managerAndi = allEmployees.find(e => e.email === 'manager.eng@example.com')!;
-  const employeesToReport = allEmployees.filter(e => e.email !== 'manager.eng@example.com' && e.email !== 'admin.hr@example.com');
+  const managerAndi = allEmployees.find(
+    (e) => e.email === 'manager.eng@example.com',
+  )!;
+  const employeesToReport = allEmployees.filter(
+    (e) =>
+      e.departmentId === managerAndi.departmentId && e.id !== managerAndi.id,
+  );
   for (const e of employeesToReport) {
     await prisma.employeeReportingLine.create({
       data: {
         employeeId: e.id,
         managerId: managerAndi.id,
-        effectiveFrom: e.hireDate,
+        effectiveFrom:
+          e.hireDate > managerAndi.hireDate ? e.hireDate : managerAndi.hireDate,
         isPrimary: true,
-      }
+      },
     });
   }
 
-  // Generate Attendances (August 26, 2026 to October 8, 2026)
+  // Generate recent attendance using the same WIB classification as check-in.
   console.log('5. Seeding Attendances...');
-  const startDate = new Date(Date.UTC(2026, 7, 26)); // Aug 26, 2026
-  const endDate = new Date(Date.UTC(2026, 9, 8)); // Oct 8, 2026
-  
-  for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+  const startDate = addCalendarDays(today, -44);
+  const endDate = today;
+
+  for (let d = new Date(startDate); d <= endDate; d = addCalendarDays(d, 1)) {
     // Skip weekends
     if (d.getUTCDay() === 0 || d.getUTCDay() === 6) continue;
 
     for (const emp of allEmployees) {
-      const isLate = Math.random() > 0.8;
-      const isAbsent = Math.random() > 0.95;
-      
-      const checkInHour = isLate ? fakerEN.number.int({ min: 9, max: 10 }) : 8;
-      const checkInMinute = fakerEN.number.int({ min: 0, max: 59 });
-      
-      const checkOutHour = fakerEN.number.int({ min: 17, max: 19 });
-      const checkOutMinute = fakerEN.number.int({ min: 0, max: 59 });
-
-      const checkInDate = new Date(d);
-      checkInDate.setUTCHours(checkInHour, checkInMinute, 0, 0);
-
-      const checkOutDate = new Date(d);
-      checkOutDate.setUTCHours(checkOutHour, checkOutMinute, 0, 0);
+      if (d < emp.hireDate) continue;
+      const startMinutes = parseTimeString(
+        defaultSchedule.startTime,
+      ).totalMinutes;
+      const record = demoAttendance(
+        d,
+        now,
+        defaultSchedule,
+        fakerEN.number.int({ min: 1, max: 20 }) === 1,
+        startMinutes + fakerEN.number.int({ min: -30, max: 60 }),
+      );
+      if (!record) continue;
 
       await prisma.attendance.create({
         data: {
           employeeId: emp.id,
-          attendanceDate: new Date(d),
-          checkIn: isAbsent ? null : checkInDate,
-          checkOut: isAbsent ? null : checkOutDate,
-          status: isAbsent ? AttendanceStatus.ABSENT : (isLate ? AttendanceStatus.LATE : AttendanceStatus.PRESENT),
-          notes: isAbsent ? 'Did not show up' : (isLate ? 'Traffic jam' : 'On time'),
-        }
+          ...record,
+        },
       });
     }
   }
@@ -429,43 +475,66 @@ async function main() {
   // Generate Leave Requests
   console.log('6. Seeding Leave Requests...');
   for (let i = 0; i < 30; i++) {
-    const emp = fakerEN.helpers.arrayElement(allEmployees);
-    const startLeave = fakerEN.date.between({ from: '2026-08-26', to: '2026-10-08' });
-    const endLeave = new Date(startLeave);
-    endLeave.setDate(startLeave.getDate() + fakerEN.number.int({ min: 0, max: 3 }));
-    const status = fakerEN.helpers.arrayElement([LeaveRequestStatus.APPROVED, LeaveRequestStatus.PENDING, LeaveRequestStatus.REJECTED]);
-    
+    const emp = allEmployees[2 + (i % (allEmployees.length - 2))];
+    const { start: startLeave, end: endLeave } = demoLeaveDates(today, i);
+    const status =
+      i < 2
+        ? LeaveRequestStatus.PENDING
+        : [
+            LeaveRequestStatus.APPROVED,
+            LeaveRequestStatus.PENDING,
+            LeaveRequestStatus.REJECTED,
+          ][i % 3];
+    const adminEmployee = allEmployees[0];
+    const approver =
+      emp.departmentId === managerAndi.departmentId && emp.id !== managerAndi.id
+        ? managerAndi
+        : adminEmployee;
+
     await prisma.leaveRequest.create({
       data: {
         employeeId: emp.id,
-        leaveType: fakerEN.helpers.arrayElement([LeaveType.ANNUAL, LeaveType.SICK]),
+        leaveType: fakerEN.helpers.arrayElement([
+          LeaveType.ANNUAL,
+          LeaveType.SICK,
+        ]),
         startDate: startLeave,
         endDate: endLeave,
         status: status,
-        reason: fakerEN.lorem.sentence(),
-        approvedBy: status !== LeaveRequestStatus.PENDING ? managerAndi.id : null,
-        approvedAt: status !== LeaveRequestStatus.PENDING ? new Date() : null,
-        rejectionReason: status === LeaveRequestStatus.REJECTED ? fakerEN.lorem.sentence() : null,
-      }
+        reason: 'Requested time off for a personal appointment.',
+        approvedBy: status !== LeaveRequestStatus.PENDING ? approver.id : null,
+        approvedAt: status !== LeaveRequestStatus.PENDING ? now : null,
+        createdAt: new Date(startLeave.getTime() - 7 * 86400000),
+        rejectionReason:
+          status === LeaveRequestStatus.REJECTED
+            ? 'Requested dates overlap with scheduled team coverage.'
+            : null,
+      },
     });
+    if (status === LeaveRequestStatus.APPROVED) {
+      await prisma.attendance.deleteMany({
+        where: {
+          employeeId: emp.id,
+          attendanceDate: { gte: startLeave, lte: endLeave },
+        },
+      });
+    }
   }
 
-  // Generate Payrolls for August and September 2026
+  // Two completed calendar months before today's WIB date.
   console.log('7. Seeding Payrolls...');
-  const periods = [
-    { start: new Date(Date.UTC(2026, 7, 1)), end: new Date(Date.UTC(2026, 7, 31)) }, // August
-    { start: new Date(Date.UTC(2026, 8, 1)), end: new Date(Date.UTC(2026, 8, 30)) }, // September
-  ];
+  const periods = demoPeriods(today);
 
   for (const period of periods) {
-    for (const emp of allEmployees) {
+    for (const [index, emp] of allEmployees.entries()) {
+      if (period.start < emp.hireDate) continue;
       const basicSalary = Number(emp.baseSalary.toString());
       const allowances = fakerEN.number.int({ min: 5, max: 20 }) * 100000;
       const deductions = fakerEN.number.int({ min: 1, max: 5 }) * 100000;
       const netSalary = basicSalary + allowances - deductions;
-      
-      const status = fakerEN.helpers.arrayElement([PayrollStatus.PAID, PayrollStatus.PROCESSED]);
-      
+
+      const status = DEMO_PAYROLL_STATUSES[index % 3];
+
       await prisma.payroll.create({
         data: {
           employeeId: emp.id,
@@ -476,8 +545,8 @@ async function main() {
           deductions: new Prisma.Decimal(deductions),
           netSalary: new Prisma.Decimal(netSalary),
           status: status,
-          paymentDate: status === PayrollStatus.PAID ? new Date(period.end.getTime() + 86400000 * 5) : null,
-        }
+          paymentDate: status === PayrollStatus.PAID ? period.end : null,
+        },
       });
     }
   }
@@ -486,8 +555,10 @@ async function main() {
 }
 
 main()
-  .catch((e) => {
-    console.error('Error during seeding:', e);
+  .catch(() => {
+    console.error(
+      'Seeding failed. Check database connectivity and migrations.',
+    );
     process.exit(1);
   })
   .finally(async () => {

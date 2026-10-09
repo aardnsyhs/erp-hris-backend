@@ -4,18 +4,14 @@ import {
   ForbiddenException,
   Injectable,
 } from '@nestjs/common';
-import { AttendanceStatus, UserRole } from '@prisma/client';
+import { UserRole } from '@prisma/client';
 import { AttendanceRepository } from './attendance.repository';
 import { WorkScheduleRepository } from '../work-schedule/work-schedule.repository';
 import { CheckInDto } from './dto/check-in.dto';
 import { CheckOutDto } from './dto/check-out.dto';
 import { AttendanceQueryDto } from './dto/attendance-query.dto';
 import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
-import {
-  getWibDate,
-  getWibTimeParts,
-  parseTimeString,
-} from '../../common/utils/timezone.util';
+import { getWibDate, classifyCheckIn } from '../../common/utils/timezone.util';
 
 @Injectable()
 export class AttendanceService {
@@ -52,17 +48,7 @@ export class AttendanceService {
 
     // 2. FR-3.3 Automatic Classification: PRESENT vs LATE based on active WorkSchedule
     const schedule = await this.workScheduleRepository.findActive();
-    const { totalMinutes: checkInMinutes } = getWibTimeParts(nowUtc);
-    const { totalMinutes: startMinutes } = parseTimeString(
-      schedule?.startTime || '09:00',
-    );
-    const tolerance = schedule?.lateToleranceMinutes ?? 15;
-    const cutoffMinutes = startMinutes + tolerance;
-
-    const status =
-      checkInMinutes <= cutoffMinutes
-        ? AttendanceStatus.PRESENT
-        : AttendanceStatus.LATE;
+    const status = classifyCheckIn(nowUtc, schedule);
 
     return this.attendanceRepository.checkIn({
       employeeId: currentUser.employeeId,

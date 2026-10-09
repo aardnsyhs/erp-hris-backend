@@ -27,6 +27,7 @@ import { JobModule } from './common/jobs/job.module';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
+import { HrBriefModule } from './modules/hr-brief/hr-brief.module';
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     LeaveRequestModule,
     PayrollModule,
     WorkScheduleModule,
+    HrBriefModule,
   ],
   controllers: [AppController],
   providers: [
@@ -87,4 +89,3 @@ export class AppModule implements NestModule {
     consumer.apply(CorrelationIdMiddleware).forRoutes('*');
   }
 }
-

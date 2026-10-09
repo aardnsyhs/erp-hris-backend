@@ -365,6 +365,7 @@ export class PayrollService {
         status: query.status,
         periodStart: query.periodStart,
         periodEnd: query.periodEnd,
+        exactPeriod: query.exactPeriod,
         search: query.search,
       }),
       this.payrollRepository.countAll({
@@ -373,6 +374,7 @@ export class PayrollService {
         status: query.status,
         periodStart: query.periodStart,
         periodEnd: query.periodEnd,
+        exactPeriod: query.exactPeriod,
         search: query.search,
       }),
     ]);

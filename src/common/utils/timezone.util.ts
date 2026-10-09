@@ -11,14 +11,11 @@ export function getWibTimeParts(date: Date): {
     timeZone: 'Asia/Jakarta',
     hour: 'numeric',
     minute: 'numeric',
-    hour12: false,
+    hourCycle: 'h23',
   });
 
   const parts = formatter.formatToParts(date);
-  const hour = parseInt(
-    parts.find((p) => p.type === 'hour')?.value ?? '0',
-    10,
-  );
+  const hour = parseInt(parts.find((p) => p.type === 'hour')?.value ?? '0', 10);
   const minute = parseInt(
     parts.find((p) => p.type === 'minute')?.value ?? '0',
     10,
@@ -66,7 +63,24 @@ export function getWibDate(date: Date = new Date()): Date {
   });
   const parts = formatter.formatToParts(date);
   const year = parseInt(parts.find((p) => p.type === 'year')?.value ?? '0', 10);
-  const month = parseInt(parts.find((p) => p.type === 'month')?.value ?? '0', 10);
+  const month = parseInt(
+    parts.find((p) => p.type === 'month')?.value ?? '0',
+    10,
+  );
   const day = parseInt(parts.find((p) => p.type === 'day')?.value ?? '0', 10);
   return new Date(Date.UTC(year, month - 1, day));
+}
+
+export function addCalendarDays(date: Date, days: number): Date {
+  return new Date(date.getTime() + days * 86_400_000);
+}
+
+export function classifyCheckIn(
+  checkIn: Date,
+  schedule: { startTime: string; lateToleranceMinutes: number } | null,
+): 'PRESENT' | 'LATE' {
+  const cutoff =
+    parseTimeString(schedule?.startTime ?? '09:00').totalMinutes +
+    (schedule?.lateToleranceMinutes ?? 15);
+  return getWibTimeParts(checkIn).totalMinutes <= cutoff ? 'PRESENT' : 'LATE';
 }
